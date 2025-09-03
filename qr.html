@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>회의실 출석 확인</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 1200px;
+            padding: 40px;
+            display: grid;
+            grid-template-columns: 1fr ;
+            gap: 40px;
+        }
+
+        .left-panel {
+            text-align: center;
+        }
+
+        .right-panel {
+            background: #f8f9ff;
+            border-radius: 15px;
+            padding: 30px;
+        }
+
+        .meeting-title {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .meeting-date {
+            color: #666;
+            font-size: 1.2em;
+            margin-bottom: 30px;
+        }
+
+        .qr-container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        #qr-code {
+            margin: 20px auto;
+        }
+
+        .qr-instruction {
+            color: #666;
+            font-size: 1.1em;
+            margin-top: 20px;
+        }
+
+        .attendance-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .attendance-title {
+            color: #333;
+            font-size: 1.8em;
+            font-weight: bold;
+        }
+
+        .attendance-count {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 25px;
+            font-weight: bold;
+        }
+
+        .attendance-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .attendee-item {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            border-left: 4px solid #667eea;
+        }
+
+        .attendee-name {
+            font-weight: bold;
+            color: #333;
+            font-size: 1.1em;
+        }
+
+        .attendee-time {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: slideIn 0.5s ease;
+        }
+
+        .welcome-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+
+        .welcome-name {
+            font-size: 2em;
+            color: #333;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .welcome-message {
+            font-size: 1.2em;
+            color: #666;
+        }
+
+        .controls {
+            margin-top: 30px;
+            text-align: center;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 0 10px;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+
+        .manual-input {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-group label {
+            display: block;
+            color: #333;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { transform: translate(-50%, -60%); opacity: 0; }
+            to { transform: translate(-50%, -50%); opacity: 1; }
+        }
+
+        @media (max-width: 1024px) {
+            .container {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .meeting-title {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="left-panel">
+            <h1 class="meeting-title">주간 팀 회의</h1>
+            <div class="meeting-date" id="current-date"></div>
+            
+            <div class="qr-container">
+                <canvas id="qr-code"></canvas>
+                <div class="qr-instruction">
+                    QR 코드를 스캔하여<br>회의 출석을 확인해주세요
+                    <div style="margin-top: 10px; font-size: 0.9em; color: #999;">
+                        또는 아래 수동 입력으로 출석체크
+                    </div>
+                </div>
+            </div>
+
+            <div class="manual-input">
+                <h3 style="color: #333; margin-bottom: 15px;">수동 출석 체크</h3>
+                <div class="input-group">
+                    <label for="manual-name">이름</label>
+                    <input type="text" id="manual-name" placeholder="이름을 입력해주세요">
+                </div>
+                <div class="input-group">
+                    <label for="manual-phone">전화번호</label>
+                    <input type="tel" id="manual-phone" placeholder="010-0000-0000">
+                </div>
+                <button class="btn" onclick="manualCheckIn()">출석 확인</button>
+            </div>
+
+            <div class="controls">
+                <button class="btn" onclick="exportAttendance()">출석부 내보내기</button>
+                <button class="btn" onclick="clearAttendance()">초기화</button>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <div class="attendance-header">
+                <div class="attendance-title">출석 현황</div>
+                <div class="attendance-count">
+                    <span id="attendance-count">0</span>명 참석
+                </div>
+            </div>
+            
+            <div class="attendance-list" id="attendance-list">
+                <!-- 출석자 목록이 여기에 표시됩니다 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 환영 메시지 모달 -->
+    <div class="modal" id="welcome-modal">
+        <div class="modal-content">
+            <div class="welcome-icon">🎉</div>
+            <div class="welcome-name" id="welcome-name"></div>
+            <div class="welcome-message">환영합니다!</div>
+        </div>
+    </div>
+
+    <script>
+        // 출석자 데이터 저장
+        let attendees = JSON.parse(localStorage.getItem('meetingAttendees') || '[]');
+        
+        // 현재 날짜 표시
+        function updateDate() {
+            const now = new Date();
+            const options = { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric',
+                weekday: 'long'
+            };
+            document.getElementById('current-date').textContent = 
+                now.toLocaleDateString('ko-KR', options);
+        }
+
+        // QR 코드 생성
+        function generateQR() {
+            const qr = new QRious({
+                element: document.getElementById('qr-code'),
+                value: window.location.origin + window.location.pathname + '?checkin=true',
+                size:500,
+                background: 'white',
+                foreground: '#333'
+            });
+        }
+
+        // 출석자 추가
+        function addAttendee(name, phone = '') {
+            const now = new Date();
+            const attendee = {
+                id: Date.now(),
+                name: name,
+                phone: phone,
+                time: now.toLocaleTimeString('ko-KR'),
+                date: now.toLocaleDateString('ko-KR')
+            };
+            
+            // 중복 확인 (같은 날짜에 같은 이름)
+            const today = now.toLocaleDateString('ko-KR');
+            const exists = attendees.some(a => a.name === name && a.date === today);
+            
+            if (!exists) {
+                attendees.unshift(attendee);
+                localStorage.setItem('meetingAttendees', JSON.stringify(attendees));
+                updateAttendanceList();
+                showWelcomeModal(name);
+                return true;
+            } else {
+                alert('이미 출석 확인된 참가자입니다.');
+                return false;
+            }
+        }
+
+        // 출석자 목록 업데이트
+        function updateAttendanceList() {
+            const list = document.getElementById('attendance-list');
+            const count = document.getElementById('attendance-count');
+            
+            // 오늘 날짜의 출석자만 표시
+            const today = new Date().toLocaleDateString('ko-KR');
+            const todayAttendees = attendees.filter(a => a.date === today);
+            
+            count.textContent = todayAttendees.length;
+            
+            if (todayAttendees.length === 0) {
+                list.innerHTML = '<div style="text-align: center; color: #999; padding: 40px;">아직 출석한 참가자가 없습니다.</div>';
+                return;
+            }
+            
+            list.innerHTML = todayAttendees.map(attendee => `
+                <div class="attendee-item">
+                    <div>
+                        <div class="attendee-name">${attendee.name}</div>
+                        ${attendee.phone ? `<div style="font-size: 0.9em; color: #666;">${attendee.phone}</div>` : ''}
+                    </div>
+                    <div class="attendee-time">${attendee.time}</div>
+                </div>
+            `).join('');
+        }
+
+        // 환영 모달 표시
+        function showWelcomeModal(name) {
+            document.getElementById('welcome-name').textContent = name;
+            document.getElementById('welcome-modal').style.display = 'block';
+            
+            setTimeout(() => {
+                document.getElementById('welcome-modal').style.display = 'none';
+            }, 3000);
+        }
+
+        // 수동 출석 체크
+        function manualCheckIn() {
+            const name = document.getElementById('manual-name').value.trim();
+            const phone = document.getElementById('manual-phone').value.trim();
+            
+            if (!name) {
+                alert('이름을 입력해주세요.');
+                return;
+            }
+            
+            if (addAttendee(name, phone)) {
+                document.getElementById('manual-name').value = '';
+                document.getElementById('manual-phone').value = '';
+            }
+        }
+
+        // 출석부 내보내기
+        function exportAttendance() {
+            if (attendees.length === 0) {
+                alert('출석 데이터가 없습니다.');
+                return;
+            }
+            
+            const today = new Date().toLocaleDateString('ko-KR');
+            const todayAttendees = attendees.filter(a => a.date === today);
+            
+            let csvContent = '이름,전화번호,출석시간,날짜\n';
+            todayAttendees.forEach(attendee => {
+                csvContent += `"${attendee.name}","${attendee.phone}","${attendee.time}","${attendee.date}"\n`;
+            });
+            
+            const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `회의출석부_${today.replace(/\./g, '-')}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // 출석 데이터 초기화
+        function clearAttendance() {
+            if (confirm('모든 출석 데이터를 삭제하시겠습니까?')) {
+                attendees = [];
+                localStorage.removeItem('meetingAttendees');
+                updateAttendanceList();
+            }
+        }
+
+        // URL 파라미터로 출석 체크
+        function checkURLParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('checkin') === 'true') {
+                const name = prompt('이름을 입력해주세요:');
+                if (name) {
+                    const phone = prompt('전화번호를 입력해주세요 (선택사항):') || '';
+                    addAttendee(name, phone);
+                }
+                // URL에서 파라미터 제거
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+
+        // 엔터키 이벤트
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                if (e.target.id === 'manual-name' || e.target.id === 'manual-phone') {
+                    manualCheckIn();
+                }
+            }
+        });
+
+        // 모달 클릭시 닫기
+        document.getElementById('welcome-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.style.display = 'none';
+            }
+        });
+
+        // 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            updateDate();
+            generateQR();
+            // 초기에는 출석 현황을 숨김
+            checkURLParams();
+        });
+
+        // 매분마다 시간 업데이트
+        setInterval(updateDate, 60000);
+    </script>
+</body>
+</html>
