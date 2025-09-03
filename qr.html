@@ -17,6 +17,7 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
+            width:100%;
             justify-content: center;
             align-items: center;
             padding: 20px;
@@ -61,6 +62,8 @@
             background: white;
             border-radius: 15px;
             padding: 30px;
+            width:100%;
+            min-width:350px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
             margin-bottom: 30px;
         }
@@ -301,188 +304,167 @@
     </div>
 
     <script>
-        // 출석자 데이터 저장
-        let attendees = JSON.parse(localStorage.getItem('meetingAttendees') || '[]');
-        
-        // 현재 날짜 표시
-        function updateDate() {
-            const now = new Date();
-            const options = { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric',
-                weekday: 'long'
-            };
-            document.getElementById('current-date').textContent = 
-                now.toLocaleDateString('ko-KR', options);
-        }
+      const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyrg-ICHOP4ij0_8d9WFd2m9v_rUFbSWvuXo9yQQpPSh6U1jObWryHKGXt1lRSJYgmv/exec';
 
-        // QR 코드 생성
-        function generateQR() {
-            const qr = new QRious({
-                element: document.getElementById('qr-code'),
-                value: window.location.origin + window.location.pathname + '?checkin=true',
-                size:500,
-                background: 'white',
-                foreground: '#333'
-            });
-        }
+// 현재 날짜 표시
+function updateDate() {
+    const now = new Date();
+    const options = { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        weekday: 'long'
+    };
+    document.getElementById('current-date').textContent = 
+        now.toLocaleDateString('ko-KR', options);
+}
 
-        // 출석자 추가
-        function addAttendee(name, phone = '') {
-            const now = new Date();
-            const attendee = {
-                id: Date.now(),
-                name: name,
-                phone: phone,
-                time: now.toLocaleTimeString('ko-KR'),
-                date: now.toLocaleDateString('ko-KR')
-            };
-            
-            // 중복 확인 (같은 날짜에 같은 이름)
-            const today = now.toLocaleDateString('ko-KR');
-            const exists = attendees.some(a => a.name === name && a.date === today);
-            
-            if (!exists) {
-                attendees.unshift(attendee);
-                localStorage.setItem('meetingAttendees', JSON.stringify(attendees));
-                updateAttendanceList();
-                showWelcomeModal(name);
-                return true;
-            } else {
-                alert('이미 출석 확인된 참가자입니다.');
-                return false;
-            }
-        }
+// QR 코드 생성
+function generateQR() {
+    const qr = new QRious({
+        element: document.getElementById('qr-code'),
+        value: window.location.origin + window.location.pathname + '?mode=checkin',
+        size: 250,
+        background: 'white',
+        foreground: '#333'
+    });
+}
 
-        // 출석자 목록 업데이트
-        function updateAttendanceList() {
-            const list = document.getElementById('attendance-list');
-            const count = document.getElementById('attendance-count');
-            
-            // 오늘 날짜의 출석자만 표시
-            const today = new Date().toLocaleDateString('ko-KR');
-            const todayAttendees = attendees.filter(a => a.date === today);
-            
-            count.textContent = todayAttendees.length;
-            
-            if (todayAttendees.length === 0) {
-                list.innerHTML = '<div style="text-align: center; color: #999; padding: 40px;">아직 출석한 참가자가 없습니다.</div>';
-                return;
-            }
-            
-            list.innerHTML = todayAttendees.map(attendee => `
-                <div class="attendee-item">
+// 출석자 목록 업데이트 (Google Apps Script API 호출)
+async function updateAttendanceList() {
+    const list = document.getElementById('attendance-list');
+    const count = document.getElementById('attendance-count');
+
+    try {
+        const response = await fetch(`${APPS_SCRIPT_URL}?action=getAttendance`);
+        const todayAttendees = await response.json();
+
+        count.textContent = todayAttendees.length;
+        list.innerHTML = ''; // 목록 초기화
+
+        if (todayAttendees.length === 0) {
+            list.innerHTML = '<div style="text-align: center; color: #999; padding: 40px;">아직 출석한 참가자가 없습니다.</div>';
+        } else {
+            todayAttendees.forEach(attendee => {
+                const entryTimeText = attendee.entryTime ? `입실: ${attendee.entryTime}` : '입실 정보 없음';
+                const exitTimeText = attendee.exitTime ? `퇴실: ${attendee.exitTime}` : '';
+
+                const item = document.createElement('div');
+                item.className = 'attendee-item';
+                item.innerHTML = `
                     <div>
                         <div class="attendee-name">${attendee.name}</div>
                         ${attendee.phone ? `<div style="font-size: 0.9em; color: #666;">${attendee.phone}</div>` : ''}
                     </div>
-                    <div class="attendee-time">${attendee.time}</div>
-                </div>
-            `).join('');
-        }
-
-        // 환영 모달 표시
-        function showWelcomeModal(name) {
-            document.getElementById('welcome-name').textContent = name;
-            document.getElementById('welcome-modal').style.display = 'block';
-            
-            setTimeout(() => {
-                document.getElementById('welcome-modal').style.display = 'none';
-            }, 3000);
-        }
-
-        // 수동 출석 체크
-        function manualCheckIn() {
-            const name = document.getElementById('manual-name').value.trim();
-            const phone = document.getElementById('manual-phone').value.trim();
-            
-            if (!name) {
-                alert('이름을 입력해주세요.');
-                return;
-            }
-            
-            if (addAttendee(name, phone)) {
-                document.getElementById('manual-name').value = '';
-                document.getElementById('manual-phone').value = '';
-            }
-        }
-
-        // 출석부 내보내기
-        function exportAttendance() {
-            if (attendees.length === 0) {
-                alert('출석 데이터가 없습니다.');
-                return;
-            }
-            
-            const today = new Date().toLocaleDateString('ko-KR');
-            const todayAttendees = attendees.filter(a => a.date === today);
-            
-            let csvContent = '이름,전화번호,출석시간,날짜\n';
-            todayAttendees.forEach(attendee => {
-                csvContent += `"${attendee.name}","${attendee.phone}","${attendee.time}","${attendee.date}"\n`;
+                    <div class="attendee-time">${entryTimeText}<br>${exitTimeText}</div>
+                `;
+                list.appendChild(item);
             });
-            
-            const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            link.setAttribute('href', url);
-            link.setAttribute('download', `회의출석부_${today.replace(/\./g, '-')}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
         }
+    } catch (error) {
+        console.error('Error fetching attendance:', error);
+        list.innerHTML = '<div style="text-align: center; color: red; padding: 40px;">출석 정보를 불러오는 중 오류가 발생했습니다.</div>';
+    }
+}
 
-        // 출석 데이터 초기화
-        function clearAttendance() {
-            if (confirm('모든 출석 데이터를 삭제하시겠습니까?')) {
-                attendees = [];
-                localStorage.removeItem('meetingAttendees');
-                updateAttendanceList();
-            }
-        }
+// 환영 모달 표시
+function showWelcomeModal(name) {
+    document.getElementById('welcome-name').textContent = name;
+    document.getElementById('welcome-modal').style.display = 'block';
 
-        // URL 파라미터로 출석 체크
-        function checkURLParams() {
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('checkin') === 'true') {
-                const name = prompt('이름을 입력해주세요:');
-                if (name) {
-                    const phone = prompt('전화번호를 입력해주세요 (선택사항):') || '';
-                    addAttendee(name, phone);
-                }
-                // URL에서 파라미터 제거
-                window.history.replaceState({}, document.title, window.location.pathname);
-            }
-        }
+    setTimeout(() => {
+        document.getElementById('welcome-modal').style.display = 'none';
+    }, 3000);
+}
 
-        // 엔터키 이벤트
-        document.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                if (e.target.id === 'manual-name' || e.target.id === 'manual-phone') {
-                    manualCheckIn();
-                }
+// 수동 출석 체크
+async function manualCheckIn() {
+    const name = document.getElementById('manual-name').value.trim();
+    const phone = document.getElementById('manual-phone').value.trim();
+
+    if (!name) {
+        alert('이름을 입력해주세요.');
+        return;
+    }
+
+    const payload = {
+        action: 'checkIn',
+        name: name,
+        phone: phone
+    };
+
+    await sendDataToAppsScript(payload);
+
+    // 입력창 초기화
+    document.getElementById('manual-name').value = '';
+    document.getElementById('manual-phone').value = '';
+}
+
+// API 통신 함수
+async function sendDataToAppsScript(payload) {
+    try {
+        const response = await fetch(APPS_SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+            headers: {
+                'Content-Type': 'application/json'
             }
         });
+        const result = await response.json();
 
-        // 모달 클릭시 닫기
-        document.getElementById('welcome-modal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                this.style.display = 'none';
-            }
-        });
+        if (result.success) {
+            updateAttendanceList(); // 출석 목록 갱신
+            showWelcomeModal(result.name); // 모달 표시
+        } else {
+            alert('출석 확인에 실패했습니다.');
+        }
+    } catch (error) {
+        console.error('Error sending data:', error);
+        alert('출석 확인 중 오류가 발생했습니다. 네트워크 상태를 확인해주세요.');
+    }
+}
 
-        // 초기화
-        document.addEventListener('DOMContentLoaded', function() {
-            updateDate();
-            generateQR();
-            // 초기에는 출석 현황을 숨김
-            checkURLParams();
-        });
+// URL 파라미터로 출석 체크 (QR 스캔 시)
+function checkURLParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('mode') === 'checkin') {
+        const name = prompt('이름을 입력해주세요:');
+        if (name) {
+            const phone = prompt('전화번호를 입력해주세요 (선택사항):') || '';
+            sendDataToAppsScript({
+                action: 'checkIn',
+                name: name,
+                phone: phone
+            });
+        }
+        // URL에서 파라미터 제거
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+}
 
-        // 매분마다 시간 업데이트
-        setInterval(updateDate, 60000);
+// 초기화
+document.addEventListener('DOMContentLoaded', function() {
+    updateDate();
+    generateQR();
+    updateAttendanceList();
+    checkURLParams();
+});
+
+// 엔터키 이벤트
+document.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        if (e.target.id === 'manual-name' || e.target.id === 'manual-phone') {
+            manualCheckIn();
+        }
+    }
+});
+
+// 모달 클릭 시 닫기
+document.getElementById('welcome-modal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        this.style.display = 'none';
+    }
+});
     </script>
 </body>
 </html>
