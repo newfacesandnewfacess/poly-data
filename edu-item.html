@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>방수판(1500×1200, 노치 400×400) · r147 UMD · 주석버전</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  html,body{height:100%;margin:0;background:#0b1220;color:#e9eef6;
+            font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  #stage{position:fixed;inset:0}
+  #ui{
+    position:fixed;left:12px;top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+    background:rgba(10,16,28,.86);border:1px solid rgba(255,255,255,.12);border-radius:12px;
+    padding:8px 10px;backdrop-filter:blur(8px);z-index:10
+  }
+  #ui button{
+    font-size:16px;padding:8px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.3);
+    background:rgba(40,40,60,.85);color:#fff;cursor:pointer
+  }
+  #ui button:hover{ background:rgba(80,80,120,.95) }
+  .label{padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.65);
+         border:1px solid rgba(255,255,255,.18);color:#fff;font-size:12px;white-space:nowrap}
+  .label-dim{padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.65);
+             border:1px solid rgba(255,0,0,.6);color:#ff4444;font-size:12px;white-space:nowrap}
+/* ===== 아이템 제작 모달 ===== */
+.modal.hidden { display: none }
+.modal {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,.45); backdrop-filter: blur(4px);
+  display:flex; align-items:center; justify-content:center;
+}
+.modal .window{
+  width:95vw; height:95vh; border-radius:16px;
+  background:#0f1424; color:#e9eef6; border:1px solid rgba(255,255,255,.12);
+  display:flex; flex-direction:column; overflow:hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+.m-header{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:10px 14px; border-bottom:1px solid rgba(255,255,255,.12);
+  background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,0));
+}
+.m-title{ font-weight:600 }
+.m-close{
+  background:transparent; color:#fff; border:1px solid rgba(255,255,255,.25);
+  padding:6px 10px; border-radius:10px; cursor:pointer;
+}
+.m-close:hover{ background:rgba(255,255,255,.08) }
+
+/* 상단: 아이템 선반 (4칸 기본, 좌우 슬라이드로 최대 15) */
+.shelfWrap{ position:relative; padding:10px 40px; border-bottom:1px solid rgba(255,255,255,.08) }
+.shelfNav{
+  position:absolute; top:50%; transform:translateY(-50%);
+  width:32px; height:32px; border-radius:50%;
+  display:grid; place-items:center; border:1px solid rgba(255,255,255,.25);
+  background:rgba(255,255,255,.06); cursor:pointer; user-select:none;
+}
+.shelfNav:hover{ background:rgba(255,255,255,.12) }
+.shelfNav.left{ left:8px } .shelfNav.right{ right:8px }
+.shelf{
+  display:grid; grid-auto-flow:column; grid-auto-columns:minmax(140px, 1fr);
+  gap:10px; overflow-x:auto; scroll-behavior:smooth; padding-bottom:6px;
+}
+.slot{
+  height:90px; border-radius:12px; border:1px dashed rgba(255,255,255,.25);
+  display:flex; align-items:center; justify-content:center; position:relative;
+  background:rgba(255,255,255,.03); min-width:140px;
+}
+.slot.empty::after{
+  content:"Empty"; font-size:12px; color:#9fb0d0; opacity:.6;
+}
+.thumb{
+  --bg:#2a3350;
+  width:110px; height:72px; border-radius:10px; background:var(--bg);
+  display:flex; align-items:center; justify-content:center; position:relative;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.15);
+}
+.thumb .piece{
+  background:#ffcc00; opacity:.85; box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);
+}
+.thumb .dims{
+  position:absolute; right:6px; bottom:4px; font-size:11px; color:#111; background:#ffcc00;
+  padding:2px 4px; border-radius:6px; font-weight:600;
+}
+
+/* 본문: 롤(시트지) 영역 */
+.m-body{ flex:1; display:flex; align-items:stretch; position:relative }
+.rollArea{ flex:1; display:flex; align-items:flex-end; justify-content:center; overflow:hidden; position:relative }
+.rollGrid{
+  position:relative; width:100%; height:100%; overflow:hidden;
+  display:flex; align-items:flex-end; justify-content:center;
+  /* 100mm 격자 (JS에서 --grid 크기 주입) */
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,.08) 0, rgba(255,255,255,.08) 1px, transparent 1px, transparent var(--grid, 100px)),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.08) 0, rgba(255,255,255,.08) 1px, transparent 1px, transparent var(--grid, 100px));
+}
+.rollSheet{
+  position:absolute; bottom:0; /* 가운데 정렬 */
+  width:600px; height:0px;      /* JS에서 mm→px로 수정 */
+  background:rgb(92, 91, 96,0.8);
+  outline:1px solid rgba(255,0,0,.7);
+}
+.dragHandle{
+  position:absolute; bottom:0; left:50%; transform:translateX(-50%);
+  width:280px; text-align:center; padding:8px 10px; margin-bottom:6px;
+  background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.25); border-radius:12px;
+  cursor:ns-resize; user-select:none; font-size:13px;
+}
+.lengthIndicator{
+  position:absolute; right:10px; bottom:10px;
+  background:rgba(0,0,0,.65); border:1px solid rgba(255,255,255,.25);
+  padding:8px 10px; border-radius:10px; font-weight:600; min-width:120px; text-align:right;
+}
+
+/* 자르기 확인 */
+.cutConfirm{
+  position:absolute; right:18px; top:62px; display:flex; gap:8px; align-items:center;
+  background:rgba(0,0,0,.6); border:1px solid rgba(255,255,255,.25); padding:8px 10px; border-radius:10px;
+}
+.cutConfirm.hidden{ display:none }
+.cutConfirm .msg{ font-weight:600 }
+.cutConfirm .btns button{
+  margin-left:6px; border-radius:8px; border:1px solid rgba(255,255,255,.25);
+  background:rgba(255,255,255,.08); color:#fff; padding:6px 10px; cursor:pointer;
+}
+.cutConfirm .btns button:hover{ background:rgba(255,255,255,.16) }
+
+/* 선택된 아이템 정보 */
+.itemInfo{
+  position:absolute; left:14px; bottom:14px;
+  background:rgba(0,0,0,.6); border:1px solid rgba(255,255,255,.25);
+  padding:8px 10px; border-radius:10px; font-size:13px;
+}		
+/* 모달 내부에서 바디로 스크롤 전파 방지 */
+#makerModal, #makerModal * {
+  overscroll-behavior: contain;
+}
+	 
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<!-- UI: 치수/마킹 토글 -->
+<div id="ui">
+  <button id="toggleDims">치수: ON</button>
+  <button id="toggleMarks">마킹영역: ON</button>
+  <button id="toggleCoords">좌표: ON</button>  <!-- ✅ 추가 -->
+  <button id="toggleMaker">아이템 제작</button>
+</div>
+
+<!-- r147 UMD (로컬) -->
+<script src="./lib/three.min.js"></script>
+<script src="./lib/controls/OrbitControls.js"></script>
+<script src="./lib/renderers/CSS2DRenderer.js"></script>
+
+<script>
+/* ============================================================
+ * 0) 공통 설정(단위: mm)  — 숫자만 바꿔도 전체 재구성
+ * ========================================================== */
+const W = 1500, D = 1200;      // 바닥판 전체 크기 (X, Z)
+const T = 0.1;                 // 바닥판 두께(Y)
+const NOTCH_X = 400, NOTCH_Z = 400, NOTCH_ORIGIN_Z = 800; // 노치(파먹음)
+const Y_TOP = T;               // 바닥 상면 높이 (= 0.1)
+const WALL_H = 300, WALL_T = 70;           // 벽 높이·폭
+const TRI_W = 40, TRI_H = 40;              // 삼각 면목(단면)
+const PILLAR_H = 300;                       // (예제) 기둥 높이
+const fmt0 = n => Number(n).toFixed(0);
+
+/* ============================================================
+ * 1) 씬/카메라/렌더러/컨트롤
+ * ========================================================== */
+const scene   = new THREE.Scene();
+const camera  = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 10000);
+const renderer= new THREE.WebGLRenderer({ antialias:true, alpha:false, powerPreference:'high-performance' });
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));  // 프레임 안정화
+document.getElementById('stage').appendChild(renderer.domElement);
+
+// 2D 라벨 렌더러(CSS)
+const labelRenderer = new THREE.CSS2DRenderer();
+labelRenderer.setSize(innerWidth,innerHeight);
+labelRenderer.domElement.style.position="fixed";
+labelRenderer.domElement.style.inset="0";
+labelRenderer.domElement.style.pointerEvents="none";
+document.body.appendChild(labelRenderer.domElement);
+
+// 컨트롤(마우스: 이동/줌/회전)
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.enablePan = true; controls.screenSpacePanning = true; controls.panSpeed = 1.2;
+controls.zoomSpeed = 1.0; controls.rotateSpeed = 0.8;
+controls.mouseButtons = { LEFT:THREE.MOUSE.PAN, MIDDLE:THREE.MOUSE.DOLLY, RIGHT:THREE.MOUSE.ROTATE };
+controls.touches      = { ONE:THREE.TOUCH.PAN, TWO:THREE.TOUCH.DOLLY_ROTATE };
+
+// 조명·그리드
+scene.add(new THREE.HemisphereLight(0xffffff,0x223344,0.85));
+scene.add(new THREE.AxesHelper(200));
+const grid = new THREE.GridHelper(4000, 40, 0x3355ff, 0x223355);
+grid.material.opacity = 0.25; grid.material.transparent = true;
+scene.add(grid);
+
+// 홈 포지션
+camera.position.set(1600,800,1600);
+controls.target.set(W/2,0,D/2);
+
+/* ============================================================
+ * 2) 바닥판(합판) + 노치
+ *    - 2D Shape(XZ) → Extrude(depth=T) → XY→XZ로 눕힘
+ * ========================================================== */
+const plateShape = new THREE.Shape();
+plateShape.moveTo(0,0); plateShape.lineTo(W,0); plateShape.lineTo(W,D);
+plateShape.lineTo(0,D); plateShape.lineTo(0,0);
+
+// 노치 (0,800)~(400,1200) : 아래 사각을 "hole"로 뚫음
+const hole = new THREE.Path();
+hole.moveTo(0,NOTCH_ORIGIN_Z);
+hole.lineTo(NOTCH_X,NOTCH_ORIGIN_Z);
+hole.lineTo(NOTCH_X,NOTCH_ORIGIN_Z+NOTCH_Z);
+hole.lineTo(0,NOTCH_ORIGIN_Z+NOTCH_Z);
+hole.lineTo(0,NOTCH_ORIGIN_Z);
+plateShape.holes.push(hole);
+
+const plateGeo  = new THREE.ExtrudeGeometry(plateShape,{ depth:T, bevelEnabled:false, steps:1 });
+const plateMesh = new THREE.Mesh(plateGeo, new THREE.MeshPhongMaterial({ color:0xf0d8b0 }));
+plateMesh.rotation.x = -Math.PI/2;         // XY→XZ
+scene.add(plateMesh);
+
+/* ============================================================
+ * 3) 주요 꼭지점(월드좌표) — 라벨/치수/벽/면목의 기준
+ * ========================================================== */
+const V = {
+  A:new THREE.Vector3(0,       Y_TOP,   0),
+  B:new THREE.Vector3(W,       Y_TOP,   0),
+  C:new THREE.Vector3(W,       Y_TOP,  -D),
+  D:new THREE.Vector3(0,       Y_TOP,  -D),
+  E:new THREE.Vector3(0,       Y_TOP,  -NOTCH_ORIGIN_Z),
+  F:new THREE.Vector3(NOTCH_X, Y_TOP,  -NOTCH_ORIGIN_Z),
+  G:new THREE.Vector3(NOTCH_X, Y_TOP,  -(NOTCH_ORIGIN_Z+NOTCH_Z))
+};
+
+// 다각형 센트로이드(치수선 방향/벽 오프셋 판정에 사용)
+function polygonCentroid(pts){
+  let A=0,cx=0,cz=0;
+  for(let i=0;i<pts.length;i++){
+    const p=pts[i], q=pts[(i+1)%pts.length];
+    const cross=p.x*q.z - q.x*p.z;
+    A+=cross; cx+=(p.x+q.x)*cross; cz+=(p.z+q.z)*cross;
+  }
+  A*=0.5; return new THREE.Vector3(cx/(6*A), Y_TOP, cz/(6*A));
+}
+const CENTROID = polygonCentroid([V.A,V.B,V.C,V.D,V.E,V.F,V.G]);
+
+/* ============================================================
+ * 4) 유틸리티 (라벨/치수/틱/공용 재질)
+ * ========================================================== */
+const matWall   = new THREE.MeshPhongMaterial({ color: 0xe5c99b });
+const matTri    = new THREE.MeshPhongMaterial({ color: 0xcaa77a });
+const matPillar = new THREE.MeshPhongMaterial({ color: 0xd7b98a });
+
+function makeLabel(pos,text,cls='label'){
+  const el=document.createElement('div'); el.className=cls; el.textContent=text;
+  const lab=new THREE.CSS2DObject(el); lab.position.copy(pos); return lab;
+}
+
+// 치수 그룹(토글 대상)
+const dimsGroup = new THREE.Group(); scene.add(dimsGroup);
+const coordGroup = new THREE.Group(); scene.add(coordGroup); // ← 이 줄이 위에 있어야 함
+// 공용: 선분 + 라벨
+function addDimSegment(a,b,text){
+  const g = new THREE.BufferGeometry().setFromPoints([a,b]);
+  const m = new THREE.LineDashedMaterial({ color:0xffffff, dashSize:40, gapSize:20, transparent:true, opacity:.95 });
+  const line = new THREE.Line(g,m); line.computeLineDistances(); dimsGroup.add(line);
+  if(text){ const mid=a.clone().add(b).multiplyScalar(0.5); dimsGroup.add(makeLabel(mid,text,'label-dim')); }
+}
+// 공용: 틱(표식)
+function addTickAt(p,dir,len=20){
+  const a=p.clone().add(dir.clone().multiplyScalar(-len*0.5));
+  const b=p.clone().add(dir.clone().multiplyScalar( len*0.5));
+  const g=new THREE.BufferGeometry().setFromPoints([a,b]);
+  dimsGroup.add(new THREE.Line(g,new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.95})));
+}
+
+/* ============================================================
+ * 5) 벽(길이 L, 폭 t=70, 높이 H=300)  — place='center'|'inset'|'outset'
+ * ========================================================== */
+function addVerticalBoard(p1, p2, name1, name2, H = WALL_H, t = WALL_T, place = 'outset') {
+  const dir = p2.clone().sub(p1); dir.y = 0;
+  const L   = Math.max(0.0001, Math.hypot(dir.x, dir.z));
+  const angY = Math.atan2(dir.z, dir.x);
+
+  const box  = new THREE.BoxGeometry(L, H, t);
+  const wall = new THREE.Mesh(box, matWall);
+
+  const mid = p1.clone().add(p2).multiplyScalar(0.5);
+  wall.position.set(mid.x, Y_TOP + H / 2, mid.z);
+  wall.rotation.y = angY;
+
+  // 내·외측 오프셋(요구: 외측으로 70 -> place='outset')
+  if (place !== 'center') {
+    const n = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
+    const toCent = CENTROID.clone().sub(mid).setY(0);
+    const nIsIn = n.dot(toCent) > 0;
+    const outwardN = nIsIn ? n.clone().multiplyScalar(-1) : n.clone();
+    const inwardN  = outwardN.clone().multiplyScalar(-1);
+    const offsetN  = (place === 'inset') ? inwardN : outwardN;
+    wall.position.add(offsetN.multiplyScalar(t * 0.5));
+  }
+
+  scene.add(wall);
+
+  // ── 상단 좌표 라벨(토글 연동을 위해 coordGroup에 추가)
+  const t1 = p1.clone(); t1.y = Y_TOP + H;
+  const t2 = p2.clone(); t2.y = Y_TOP + H;
+
+  coordGroup.add(
+    makeLabel(
+      t1.clone().add(new THREE.Vector3(0, 20, 0)),
+      `${name1}@ (${fmt0(t1.x)},${fmt0(t1.y)},${fmt0(t1.z)})`
+    )
+  );
+  coordGroup.add(
+    makeLabel(
+      t2.clone().add(new THREE.Vector3(0, 20, 0)),
+      `${name2}@ (${fmt0(t2.x)},${fmt0(t2.y)},${fmt0(t2.z)})`
+    )
+  );
+
+  return wall;
+}
+
+
+/* ============================================================
+ * 6) 삼각 면목(단면 40×40) — 변 방향으로 압출(+Z), +X를 내측으로 정렬
+ * ========================================================== */
+function createTriShape(w=TRI_W,h=TRI_H){
+  const s=new THREE.Shape(); s.moveTo(0,0); s.lineTo(w,0); s.lineTo(0,h); s.lineTo(0,0); return s;
+}
+function addTriPrismOnEdge(p1,p2,label='edge',w=TRI_W,h=TRI_H){
+  const zAxis = p2.clone().sub(p1); zAxis.y=0; const L=Math.max(0.0001,zAxis.length()); zAxis.normalize();
+  const yAxis = new THREE.Vector3(0,1,0);
+  let   xAxis = yAxis.clone().cross(zAxis).normalize();
+  const mid   = p1.clone().add(p2).multiplyScalar(0.5);
+  const toC   = CENTROID.clone().sub(mid).setY(0);
+  if(xAxis.dot(toC)<0) xAxis.negate(); // +X=내측
+
+  const tri = createTriShape(w,h);
+  const geo = new THREE.ExtrudeGeometry(tri,{ depth:L, bevelEnabled:false, steps:1 });
+  const mesh= new THREE.Mesh(geo,matTri);
+  mesh.setRotationFromMatrix(new THREE.Matrix4().makeBasis(xAxis,yAxis,zAxis));
+  mesh.position.copy(p1);
+  scene.add(mesh);
+  return mesh;
+}
+
+/* ============================================================
+ * 7) 기둥(70×70×300) — 밑면 사각 4점으로 생성(축정렬)
+ * ========================================================== */
+function addAxisAlignedPillar(corners, h = PILLAR_H, label = '') {
+  const xs = corners.map(p => p.x), zs = corners.map(p => p.z);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+  const Wp = Math.abs(maxX - minX), Dp = Math.abs(maxZ - minZ);
+  const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
+
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(Wp, h, Dp), matPillar);
+  mesh.position.set(cx, Y_TOP + h / 2, cz);
+  scene.add(mesh);
+
+  // 상단 4점 라벨(좌표 토글 연동: coordGroup에 추가)
+  const ty = Y_TOP + h;
+  [[minX, minZ], [maxX, minZ], [maxX, maxZ], [minX, maxZ]].forEach((p, i) => {
+    const v = new THREE.Vector3(p[0], ty, p[1]);
+    coordGroup.add(  // ← scene 대신 coordGroup
+      makeLabel(
+        v.clone().add(new THREE.Vector3(0, 20, 0)),
+        `${label ? label + ' ' : ''}T${i + 1} (${fmt0(v.x)},${fmt0(v.y)},${fmt0(v.z)})`
+      )
+    );
+  });
+
+  return mesh;
+}
+
+/* ============================================================
+ * 8) 치수 보조선 — 외곽/노치/세로/두께
+ * ========================================================== */
+function addDimToward(p1,p2,text,offset=-60){
+  const d=p2.clone().sub(p1).setY(0).normalize();
+  const n=new THREE.Vector3(-d.z,0,d.x);
+  const mid=p1.clone().add(p2).multiplyScalar(0.5);
+  const sgn = (n.dot(CENTROID.clone().sub(mid).setY(0))>=0)? 1 : -1;
+  const off=n.multiplyScalar(sgn*offset);
+  const a=p1.clone().add(off); a.y=Y_TOP+1;
+  const b=p2.clone().add(off); b.y=Y_TOP+1;
+  addDimSegment(a,b,text);
+}
+function addHeightDimAt(point,height=300,text='300',offset=100){
+  // 바깥쪽으로 치수선 내보내기
+  const outward = point.clone().setY(0).sub(CENTROID.clone().setY(0));
+  if(outward.lengthSq()===0) outward.set(1,0,0);
+  outward.normalize().multiplyScalar(offset);
+  const base=new THREE.Vector3(point.x+outward.x,Y_TOP,point.z+outward.z);
+  const top =new THREE.Vector3(point.x+outward.x,Y_TOP+height,point.z+outward.z);
+  addDimSegment(base,top,text);
+  const tickDir=new THREE.Vector3(-outward.z,0,outward.x).normalize();
+  addTickAt(base,tickDir); addTickAt(top,tickDir);
+}
+/*
+function addThicknessDimOnEdge(p1,p2,thickness=70,text='70',y=Y_TOP+40){
+  const mid=p1.clone().add(p2).multiplyScalar(0.5);
+  const dir=p2.clone().sub(p1).setY(0).normalize();
+  let n=new THREE.Vector3(-dir.z,0,dir.x);
+  if(n.dot(mid.clone().sub(CENTROID.clone().setY(mid.y)))<0) n.negate(); // 바깥쪽
+  const a=mid.clone().add(n.clone().multiplyScalar(-thickness/2)); a.y=y;
+  const b=mid.clone().add(n.clone().multiplyScalar( thickness/2)); b.y=y;
+  addDimSegment(a,b,text); addTickAt(a,dir); addTickAt(b,dir);
+}
+/*
+/* ============================================================
+ * 9) 마킹영역 (버튼 토글) — 얇은 반투명 패치 + 외곽선 + 라벨
+ *    - addMarkRect(cx,cz,w,d,label) : 중심/폭/깊이
+ *    - addMarkRectByCorners([p1,p2,p3,p4],label) : 꼭지점 4개(축정렬)
+ * ========================================================== */
+const markGroup = new THREE.Group(); scene.add(markGroup);
+
+function addMarkRect(cx,cz,w,d,label='MARK'){
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(w,d),
+    new THREE.MeshBasicMaterial({ color:0xff0000, transparent:true, opacity:0.22, depthWrite:false })
+  );
+  mesh.rotation.x = -Math.PI/2;
+  mesh.position.set(cx, Y_TOP+0.05, cz);
+  markGroup.add(mesh);
+
+  // 외곽선
+  const hw=w/2, hd=d/2;
+  const poly=[[-hw,0,-hd],[hw,0,-hd],[hw,0,hd],[-hw,0,hd]].map(([x,_,z])=>new THREE.Vector3(cx+x, Y_TOP+0.06, cz+z));
+  const g=new THREE.BufferGeometry().setFromPoints([...poly, poly[0]]);
+  const line=new THREE.Line(g,new THREE.LineBasicMaterial({ color:0xff0000, transparent:true, opacity:0.9 }));
+  markGroup.add(line);
+
+  // 라벨
+  markGroup.add(makeLabel(new THREE.Vector3(cx, Y_TOP+0.06, cz), label, 'label-dim'));
+}
+function addMarkRectByCorners(corners,label='MARK'){
+  const xs=corners.map(p=>p.x), zs=corners.map(p=>p.z);
+  const cx=(Math.min(...xs)+Math.max(...xs))/2;
+  const cz=(Math.min(...zs)+Math.max(...zs))/2;
+  addMarkRect(cx, cz, Math.abs(Math.max(...xs)-Math.min(...xs)), Math.abs(Math.max(...zs)-Math.min(...zs)), label);
+}
+
+/* ===== 9.x) 3D 마킹 유틸: 아무 평면(세로/기울기 포함)에서 동작 ===== */
+// corners: [{x,y,z}, ... 4개] (시계/반시계 아무거나 OK; 규칙만 유지)
+function addMarkQuad3D(corners, label='MARK', { color=0xff0000, opacity=0.22, outline=true } = {}){
+  if (corners.length !== 4) { console.warn('addMarkQuad3D: 4개 꼭지점 필요'); return; }
+  const p = corners.map(c => new THREE.Vector3(c.x, (c.y ?? Y_TOP+0.05), c.z));
+
+  // 두 삼각형(0-1-2, 0-2-3)로 사각 생성
+  const pos = new Float32Array([
+    p[0].x,p[0].y,p[0].z,  p[1].x,p[1].y,p[1].z,  p[2].x,p[2].y,p[2].z,
+    p[0].x,p[0].y,p[0].z,  p[2].x,p[2].y,p[2].z,  p[3].x,p[3].y,p[3].z,
+  ]);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.computeVertexNormals();
+
+  const mat = new THREE.MeshBasicMaterial({
+    color, transparent:true, opacity, side:THREE.DoubleSide, depthWrite:false
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  markGroup.add(mesh);
+
+  // 외곽선
+  if (outline) {
+    const loopGeo = new THREE.BufferGeometry().setFromPoints([p[0],p[1],p[2],p[3],p[0]]);
+    const loopMat = new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.9 });
+    markGroup.add(new THREE.Line(loopGeo, loopMat));
+  }
+
+  // 라벨: 면의 중심 + 법선 방향으로 살짝 띄움
+  const centroid = p[0].clone().add(p[1]).add(p[2]).add(p[3]).multiplyScalar(0.25);
+  const normal = new THREE.Triangle(p[0],p[1],p[2]).getNormal(new THREE.Vector3()).normalize();
+  const labelPos = centroid.clone().add(normal.multiplyScalar(5));
+  markGroup.add(makeLabel(labelPos, label, 'label-dim'));
+
+  return mesh;
+}
+
+// 편의: YZ 평면(세로, x 고정)
+function addMarkRectVerticalX(x, y1, y2, z1, z2, label='MARK', opts){
+  return addMarkQuad3D([
+    {x:x, y:y1, z:z1},
+    {x:x, y:y1, z:z2},
+    {x:x, y:y2, z:z2},
+    {x:x, y:y2, z:z1},
+  ], label, opts);
+}
+
+// 편의: XY 평면(세로, z 고정)
+function addMarkRectVerticalZ(z, y1, y2, x1, x2, label='MARK', opts){
+  return addMarkQuad3D([
+    {x:x1, y:y1, z:z},
+    {x:x2, y:y1, z:z},
+    {x:x2, y:y2, z:z},
+    {x:x1, y:y2, z:z},
+  ], label, opts);
+}
+
+
+// AE 같은 벽 두께를 "벽 바깥쪽(gap만큼)"으로 치수선 표시
+function addThicknessDimOnEdgeOutside(p1, p2, thickness=70, text='70', y=Y_TOP+40, gap=35){
+  const mid = p1.clone().add(p2).multiplyScalar(0.5);
+  const dir = p2.clone().sub(p1); dir.y = 0; dir.normalize();        // 변 방향(평행선/틱 방향)
+  let   n   = new THREE.Vector3(-dir.z, 0, dir.x);                    // 변 수직(두께 방향)
+  const toOut = mid.clone().sub(CENTROID.clone().setY(mid.y));        // 바깥 판정
+  if (n.dot(toOut) < 0) n.negate();                                   // +n = 바깥
+
+  // 두 ‘면’의 중심점(내측/외측)  ➜ 여기서 gap만큼 바깥으로 내보내 치수선 위치 결정
+  const innerFace = mid.clone().add(n.clone().multiplyScalar(-thickness/2)); innerFace.y = y; // AE면
+  const outerFace = mid.clone().add(n.clone().multiplyScalar( thickness/2)); outerFace.y = y; // 바깥면
+  const a = innerFace.clone().add(n.clone().multiplyScalar(gap));  // 치수선 쪽 내측 투영점
+  const b = outerFace.clone().add(n.clone().multiplyScalar(gap));  // 치수선 쪽 외측 투영점
+
+  // 면 → 치수선까지 연장선(Extension lines)
+  const extMat = new THREE.LineBasicMaterial({ color:0xffffff, transparent:true, opacity:.85 });
+  //dimsGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([innerFace, a]), extMat));
+  dimsGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([outerFace, b]), extMat));
+
+  // 바깥쪽에 위치한 두 점 a–b 사이에 두께 치수선(길이 = thickness)
+  addDimSegment(a, b, text);
+
+  // 끝표식(틱)은 변 방향으로
+  addTickAt(a, dir);
+  addTickAt(b, dir);
+}
+
+// 새 호출: AE 면 기준 바깥쪽(gap=40mm)으로 두께 치수
+addThicknessDimOnEdgeOutside(V.A, V.E, 70, '70', Y_TOP+340,35);
+
+/* ============================================================
+ * 10) 실제 생성 파이프라인
+ * ========================================================== */
+// (1) 벽 4개(외측으로 폭 70)
+addVerticalBoard(V.A,V.E,'A','E',WALL_H,WALL_T,'outset');
+addVerticalBoard(V.E,V.F,'E','F',WALL_H,WALL_T,'outset');
+addVerticalBoard(V.F,V.G,'F','G',WALL_H,WALL_T,'outset');
+addVerticalBoard(V.G,V.C,'G','C',WALL_H,WALL_T,'outset');
+
+// (2) 삼각 면목 4개 (AE, EF, FG, GC) — 호출 방향을 이미 조정
+addTriPrismOnEdge(V.E,V.A,'AE');
+addTriPrismOnEdge(V.F,V.E,'EF');
+addTriPrismOnEdge(V.G,V.F,'FG');
+addTriPrismOnEdge(V.C,V.G,'GC');
+
+// (3) 코너 쐐기(예: F 코너) — 사용자 지정 5점(최근에 쓰신 값 기준)
+(function addCornerWedgeF(){
+  const mat = matTri;
+  const VTX = [
+    new THREE.Vector3(400, Y_TOP+0,  -800),
+    new THREE.Vector3(400, Y_TOP+40, -800),
+    new THREE.Vector3(400, Y_TOP+0,  -760),
+    new THREE.Vector3(440, Y_TOP+0,  -800),
+    new THREE.Vector3(440, Y_TOP+0,  -760)
+  ];
+  const idx = [ 0,3,4, 0,4,2,  1,3,0, 1,0,2, 1,2,4, 1,4,3 ];
+  const pos = new Float32Array(VTX.flatMap(v=>[v.x,v.y,v.z]));
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos,3)); geo.setIndex(idx); geo.computeVertexNormals();
+  scene.add(new THREE.Mesh(geo,mat));
+})();
+
+// (4) 기둥 2개(예제: E, G)
+addAxisAlignedPillar([{x:0,y:0,z:-800},{x:-70,y:0,z:-800},{x:-70,y:0,z:-870},{x:0,y:0,z:-870}], 300, '');
+addAxisAlignedPillar([{x:400,y:0,z:-1200},{x:330,y:0,z:-1200},{x:330,y:0,z:-1270},{x:400,y:0,z:-1270}], 300, '');
+
+// (5) 치수보조선 — 외곽/노치/세로/두께
+addDimToward(V.A,V.B,'1500');     // X 외곽
+addDimToward(V.B,V.C,'1200');     // Z 외곽
+addDimToward(V.E,V.F,'400');      // 노치 X
+addDimToward(V.F,V.G,'400');      // 노치 Z
+addHeightDimAt(V.A, 300, '300');  // A 높이
+//addThicknessDimOnEdge(V.A,V.E,70,'70', Y_TOP+340); // AE 두께
+
+
+//공용토글 유틸 추가 ( 라벨도 같이 꺼지게 )
+function setGroupVisibility(group, on) {
+  group.traverse(obj => {
+    obj.visible = on;                         // three.js 가시성
+    if (obj.isCSS2DObject && obj.element) {   // CSS2D 라벨 DOM도 동기화
+      obj.element.style.display = on ? '' : 'none';
+    }
+  });
+}
+// 🔽 초기 상태: 좌표 OFF (라벨 DOM까지 함께 비활성)
+setGroupVisibility(coordGroup, false);
+coordGroup.visible = false;
+document.getElementById('toggleCoords').textContent = '좌표: OFF';
+
+
+/* ============================================================
+ * 6-2 마킹 순차
+ * ========================================================== */
+// (6) 마킹영역(예시 2개) — 버튼으로 토글
+addMarkRectVerticalX(0, Y_TOP, Y_TOP+300, 0, -50, '마킹영역-50mm');
+addMarkRect(750, -25, 1500, 50, '마킹영역-50mm');                    // 중심형  중심좌표 + 넓이 + z넓이
+addMarkQuad3D([  {x:0, y:Y_TOP+40, z: 0},  {x:0, y:Y_TOP+40, z:-50},  {x:40, y:0, z:-50},  {x:40, y:0, z: 0},], '마킹영역-50mm');
+addMarkRect(1450, -600, 100, 1200, '마킹영역-100mm');                    // 중심형  중심좌표 + 넓이 + z넓이
+// AE 벽 바깥면(대략 x = -35 부근)에 세로 마킹: 높이 0.1~300, z: -900~-700
+addMarkQuad3D([  {x:1500, y:Y_TOP+40, z: -1200},  {x:1500, y:0, z:-1160},  {x:1400, y:0, z:-1160},  {x:1400,  y:Y_TOP+40,  z: -1200},], '마킹영역-100mm');
+addMarkRectVerticalZ(-1200, Y_TOP,Y_TOP+300,  1400,  1500, '마킹영역-100mm'); // z시작점 ,y=0~300,x=1400~1500 
+addMarkQuad3D([  {x:1500, y:Y_TOP+300, z: -1200},  {x:350, y:Y_TOP+300, z:-1200},  {x:350, y:Y_TOP+300, z:-1250},  {x:1500,  y:Y_TOP+300,  z: -1250},], '마킹영역-50mm');
+addMarkQuad3D([  {x:350, y:Y_TOP+300, z: -1200},  {x:400, y:Y_TOP+300, z:-1200},  {x:400, y:Y_TOP+300, z:-800},  {x:350,  y:Y_TOP+300,  z: -800},], '마킹영역-50mm');
+addMarkQuad3D([  {x:350, y:Y_TOP+300, z: -800},  {x:350, y:Y_TOP+300, z:-850}, {x:-50,  y:Y_TOP+300,  z: -850}, {x:-50, y:Y_TOP+300, z:-800},], '마킹영역-50mm');
+addMarkQuad3D([  {x:-50, y:Y_TOP+300, z: -800},  {x:-50, y:Y_TOP+300, z:-0}, {x:0,  y:Y_TOP+300,  z: 0}, {x:0, y:Y_TOP+300, z:-800},], '마킹영역-50mm');
+addMarkRect(500, -500, 120, 120, '파이프 500x700');                    // 중심형  중심좌표 + 넓이 + z넓이
+//addMarkRectByCorners([{x:1500,y:0,z:-1000},{x:1500,y:300,z:-1000},{x:1400,y:300,z:-1000},{x:1400,y:0,z:-1000}], '마킹영역-100mm');
+//addMarkRectByCorners([{x:420,y:0,z:-500},{x:700,y:0,z:-500},{x:700,y:0,z:-800},{x:420,y:0,z:-800}], '작업영역-2');
+//addMarkRectByCorners([{x:0,y:0,z:-700},{x:100,y:0,z:-700},{x:100,y:0,z:-800},{x:420,y:0,z:-800}], '작업영역-2');
+
+// GC 벽 바깥면(대략 z = -1200-35)에 세로 마킹: x: 1100~1400, 높이 0.1~300
+//addMarkRectVerticalZ(-1200,-35, Y_TOP, Y_TOP+300, 1100, 1400, 'GC-세로마킹');
+
+// 꼭지점 4개로 임의 평면(기울어진 면도 가능)
+//addMarkQuad3D([  {x:330, y:Y_TOP+10,  z:-900},  {x:400, y:Y_TOP+10,  z:-900},  {x:400, y:Y_TOP+180, z:-900},  {x:330, y:Y_TOP+180, z:-900},], 'G-세로패치');
+/* ============================================================
+ * 11) 토글 & 루프
+ * ========================================================== */
+document.getElementById('toggleDims').onclick = () => {
+   const next = !dimsGroup.visible;
+  setGroupVisibility(dimsGroup, next);   // ✅ 라벨까지 확실히 토글
+  dimsGroup.visible = next;              // 일관성 유지
+  document.getElementById('toggleDims').textContent = `치수: ${next ? 'ON' : 'OFF'}`;
+};
+document.getElementById('toggleMarks').onclick = () => {
+  const next = !markGroup.visible;
+  setGroupVisibility(markGroup, next);          // ✅ 라벨까지 확실히 ON/OFF
+  // group.visible도 맞춰둠(일관성)
+  markGroup.visible = next;
+  document.getElementById('toggleMarks').textContent = `마킹영역: ${next ? 'ON' : 'OFF'}`;
+};
+// 좌표 토글
+document.getElementById('toggleCoords').onclick = () => {
+  const next = !coordGroup.visible;
+  setGroupVisibility(coordGroup, next);   // ✅ 라벨 DOM까지 동기화
+  coordGroup.visible = next;              // 일관성 유지
+  document.getElementById('toggleCoords').textContent = `좌표: ${next ? 'ON' : 'OFF'}`;
+};
+
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight); labelRenderer.setSize(innerWidth,innerHeight);
+});
+(function animate(){
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene,camera);
+  labelRenderer.render(scene,camera);
+})();
+
+/* 아이템 제작*/
+let isTouchDrag = false;     // 드래그가 터치인지 여부
+let wheelTimer = null;       // 휠(스크롤) 멈춤 감지용 타이머
+
+// ===== 아이템 제작 모달 로직 =====
+let makerBtn, maker, makerClose;
+let shelf, shelfPrev, shelfNext;
+let rollGrid, rollSheet, dragHandle, lengthIndicator, cutConfirm, cutLenSpan, cutYes, cutNo, itemInfo;
+
+const ROLL_WIDTH_MM  = 1000;   // 1m
+const ROLL_LENGTH_MM = 5000;   // 5m
+const STEP_MM        = 100;    // 100mm 스텝
+const MAX_SLOTS      = 15;
+
+let mm2px = 0.2;
+let curLen = 0, pendingLen = 0;
+let isDragging = false, dragStartY = 0, dragStartLen = 0;
+
+// 🔽 페이지의 모든 DOM이 준비된 뒤에 바인딩/초기화
+document.addEventListener('DOMContentLoaded', () => {
+  // 1) 요소 바인딩
+  makerBtn       = document.getElementById('toggleMaker');
+  maker          = document.getElementById('makerModal');
+  makerClose     = document.getElementById('makerClose');
+
+  shelf          = document.getElementById('shelf');
+  shelfPrev      = document.getElementById('shelfPrev');
+  shelfNext      = document.getElementById('shelfNext');
+
+  rollGrid       = document.getElementById('rollGrid');
+  rollSheet      = document.getElementById('rollSheet');
+  dragHandle     = document.getElementById('dragHandle');
+  lengthIndicator= document.getElementById('lengthIndicator');
+  cutConfirm     = document.getElementById('cutConfirm');
+  cutLenSpan     = document.getElementById('cutLen');
+  cutYes         = document.getElementById('cutYes');
+  cutNo          = document.getElementById('cutNo');
+  itemInfo       = document.getElementById('itemInfo');
+  
+
+  // 2) 슬롯 초기화 (여기서 하면 #shelf가 null일 일이 없음)
+  initShelf();
+
+  // 3) 네비게이션/오픈 바인딩
+  shelfPrev.onclick = ()=> shelf.scrollBy({ left: -shelf.clientWidth, behavior:'smooth' });
+  shelfNext.onclick = ()=> shelf.scrollBy({ left:  shelf.clientWidth, behavior:'smooth' });
+
+  //makerBtn.onclick  = openMaker;
+  //makerClose.onclick= closeMaker;
+
+
+// === 버튼 바인딩 ===
+makerBtn.onclick = () => {
+  if (maker.classList.contains('hidden')) openMaker();
+  else closeMaker();
+};
+makerClose.onclick = closeMaker;
+
+// 오버레이 빈 곳 클릭 시 닫기 (모달 바깥 클릭)
+maker.addEventListener('click', (e) => {
+  if (e.target === maker) closeMaker();
+});
+// (선택) 오버레이 빈 곳 클릭 시 닫기
+maker?.addEventListener('click', (e) => {
+  if (e.target === maker) closeMaker();
+});
+
+// (권장) 모달 내부 스크롤 전파 차단
+maker?.addEventListener('wheel', (e) => { e.preventDefault(); e.stopPropagation(); }, { passive:false });
+
+
+  // 4) 드래그 핸들
+  dragHandle.addEventListener('pointerdown', onDragStart);
+  dragHandle.addEventListener('pointermove', onDragMove);
+  dragHandle.addEventListener('pointerup',   onDragEnd);
+
+  // 5) 리사이즈
+  window.addEventListener('resize', () => {
+    if(!maker.classList.contains('hidden')) computeScale();
+  });
+});
+
+// ===== 이하 보조 함수들은 그대로 사용 =====
+function initShelf(){
+  shelf.innerHTML = '';
+  for(let i=0;i<MAX_SLOTS;i++){
+    const s = document.createElement('div');
+    s.className = 'slot empty';
+    s.dataset.index = i;
+    shelf.appendChild(s);
+  }
+}
+
+// 모달 열기 (한 번만 선언!)
+function openMaker(){
+  if (!maker) return;
+  maker.classList.remove('hidden');
+
+  // 레이아웃 확정 후 스케일/표시 보정
+  computeScale();
+  requestAnimationFrame(computeScale);
+
+  // 모달 전체에서 휠 처리 (자식 어디서 굴려도 동작)
+  maker.addEventListener('wheel', onWheel, { passive:false });
+  maker.focus?.();
+}
+
+// ✅ 모달 닫기 (새로 추가)
+function closeMaker(){
+  if (!maker) return;
+  maker.classList.add('hidden');
+
+  // 컷 확인/선택 정보 숨김
+  hideCutConfirm();
+  itemInfo && (itemInfo.style.display = 'none');
+
+  // 휠 리스너 해제(중복 방지)
+  maker.removeEventListener('wheel', onWheel);
+}
+
+// (선택) 전역 노출이 필요하면 주석 해제
+// window.openMaker  = openMaker;
+// window.closeMaker = closeMaker;
+
+
+function computeScale(){
+  const w = rollGrid.clientWidth * 0.9;
+  mm2px = Math.max(0.05, w / ROLL_WIDTH_MM);
+  rollGrid.style.setProperty('--grid', (mm2px * STEP_MM) + 'px');
+  rollSheet.style.width  = (ROLL_WIDTH_MM * mm2px) + 'px';
+  rollSheet.style.height = (curLen * mm2px) + 'px';
+  updateLengthIndicator();
+  updateSheetAppearance(); // ★ 추가
+}
+//마우스 휠 핸들러 추가
+function onWheel(e){
+  // 모달 안에서 스크롤이 페이지로 전파되지 않도록
+  e.preventDefault();
+ e.stopPropagation();
+  // deltaY > 0 (아래로 스크롤) ⇒ 시트지가 "올라오게" 길이 증가
+ const direction = e.deltaY > 0 ? 1 : -1; // 아래로 굴리면 +, 위로 굴리면 -
+  let next = curLen + (direction * STEP_MM); // STEP_MM=100
+  next = Math.max(0, Math.min(ROLL_LENGTH_MM, next));
+
+  if(next !== curLen){
+    curLen = next;
+    rollSheet.style.height = (curLen * mm2px) + 'px';
+    updateLengthIndicator();
+
+    // 멈춘 뒤 0.5초 후 컷 확인
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => {
+      if(curLen > 0){
+        pendingLen = curLen;
+        showCutConfirm(pendingLen);
+      }
+    }, 500);
+  }
+}
+
+// 드래그 핸들러들
+function onDragStart(e){
+   isDragging = true;
+  isTouchDrag = (e.pointerType === 'touch');   // ★ 터치 여부 기록
+  dragHandle.setPointerCapture(e.pointerId);
+  dragStartY = e.clientY;
+  dragStartLen = curLen;
+  hideCutConfirm();
+}
+
+function onDragMove(e){
+  if(!isDragging) return;
+  const dy = dragStartY - e.clientY;           // 위로 드래그: dy>0
+  const sign = isTouchDrag ? -1 : 1;           // ★ 터치는 반대로(아래로=증가)
+  let next = dragStartLen + (sign * dy / mm2px);
+  next = Math.max(0, Math.min(ROLL_LENGTH_MM, Math.round(next / STEP_MM) * STEP_MM));
+  if(next !== curLen){
+    curLen = next;
+    rollSheet.style.height = (curLen * mm2px) + 'px';
+    updateLengthIndicator();
+  }
+}
+function onDragEnd(){
+  if(!isDragging) return;
+  isDragging = false;
+  if(curLen > 0){
+    pendingLen = curLen;
+    showCutConfirm(pendingLen);
+  }
+}
+
+function updateLengthIndicator(){
+  lengthIndicator.textContent = curLen.toLocaleString() + ' mm';
+}
+function showCutConfirm(len){
+  cutLenSpan.textContent = len.toLocaleString();
+  cutConfirm.classList.remove('hidden');
+}
+function hideCutConfirm(){ cutConfirm.classList.add('hidden'); }
+
+cutNo && (cutNo.onclick = hideCutConfirm);
+if (cutYes) {
+  cutYes.onclick = () => {
+    if(!pendingLen) return;
+    addItemToShelf({ widthMm: ROLL_WIDTH_MM, lengthMm: pendingLen });
+    curLen = 0;
+    rollSheet.style.height = '0px';
+    updateLengthIndicator();
+    hideCutConfirm();
+  };
+}
+
+function updateSheetAppearance(){
+  if (!rollSheet) return;
+  const leftBandPx = 100 * mm2px; // 100mm → px
+  // 시트가 가진 기존 배경색/이미지는 유지하고, 어두운 오버레이만 얹음
+  rollSheet.style.backgroundImage =
+    `linear-gradient(to right,
+      rgba(0,0,0,0.22) 0, rgba(0,0,0,0.22) ${leftBandPx}px,
+      rgba(0,0,0,0.00) ${leftBandPx}px, rgba(0,0,0,0.00) 100%)`;
+  rollSheet.style.backgroundRepeat = 'no-repeat';
+  rollSheet.style.backgroundSize   = '100% 100%'; // 요소 크기에 맞춤
+  // (선택) 기본 배경색이 없다면 가볍게 세팅
+  if (!rollSheet.style.backgroundColor) {
+    rollSheet.style.backgroundColor = 'rgba(255,255,255,0.9)';
+  }
+}
+
+
+function addItemToShelf({ widthMm, lengthMm }){
+  const empty = Array.from(shelf.children).find(s => s.classList.contains('empty'));
+  if(!empty){ alert('슬롯이 가득 찼습니다. (최대 15)'); return; }
+  empty.classList.remove('empty');
+
+  const th = document.createElement('div'); th.className = 'thumb';
+  const pad = 6, TW = 110 - pad*2, TH = 72 - pad*2;
+  const scale = Math.min(TW / widthMm, TH / lengthMm);
+  const pw = Math.max(4, Math.round(widthMm * scale));
+  const ph = Math.max(4, Math.round(lengthMm * scale));
+
+  const piece = document.createElement('div');
+  piece.className = 'piece';
+  piece.style.width = pw+'px'; piece.style.height = ph+'px';
+  th.appendChild(piece);
+
+  const dims = document.createElement('div'); dims.className = 'dims';
+  dims.textContent = `1000×${lengthMm}`;
+  th.appendChild(dims);
+
+  empty.appendChild(th);
+
+  empty.onclick = () => {
+    itemInfo.style.display = '';
+    itemInfo.textContent = `선택된 아이템: 1000mm × ${lengthMm}mm`;
+  };
+}
+</script>
+<!-- 아이템 제작 모달 -->
+<div id="makerModal" class="modal hidden" tabindex="-1">
+  <div class="window">
+    <div class="m-header">
+      <div class="m-title">아이템 제작</div>
+      <button class="m-close" id="makerClose">닫기 ✕</button>
+    </div>
+
+    <div class="shelfWrap">
+      <div class="shelfNav left"  id="shelfPrev">‹</div>
+      <div class="shelfNav right" id="shelfNext">›</div>
+      <div class="shelf" id="shelf">
+        <!-- 최대 15칸, 초기는 Empty -->
+      </div>
+    </div>
+
+    <div class="m-body">
+      <div class="rollArea">
+        <div class="rollGrid" id="rollGrid">
+          <div class="rollSheet" id="rollSheet"></div>
+          <div class="dragHandle" id="dragHandle">↕ 아래에서 위로 드래그하여 펼치기 (100mm 단위)</div>
+          <div class="lengthIndicator" id="lengthIndicator">0 mm</div>
+          <div class="cutConfirm hidden" id="cutConfirm">
+            <div class="msg">자르겠습니까? (<span id="cutLen">0</span> mm)</div>
+            <div class="btns">
+              <button id="cutYes">네</button>
+              <button id="cutNo">아니오</button>
+            </div>
+          </div>
+          <div class="itemInfo" id="itemInfo" style="display:none;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
