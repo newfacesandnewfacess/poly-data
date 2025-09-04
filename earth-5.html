@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>3D Globe - Clouds + Polished UI + Flag–Capital Quiz</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    html, body { height:100%; margin:0; background:#0b1220; color:#e9eef6; overflow:hidden; }
+    body  { display:grid; place-items:center; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+    .wrap { width:min(94vw,100%); height:min(94vh,100%); position:relative; background:url('https://marketplace.canva.com/ODy0c/MAE0FwODy0c/1/s2/canva-photo-of-galaxy-stars-MAE0FwODy0c.jpg') center/cover no-repeat; }
+    #stage { width:100%; height:100%; display:block; }
+	#stage { touch-action: none; }
+    /* Polished UI */
+    #ui {
+		width: 150px;position:absolute; left:12px; bottom:12px; display:flex; flex-direction:column; gap:10px;
+		background:rgba(10,16,28,.86); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.12); border-radius:14px;
+		padding:12px; box-shadow:0 6px 28px rgba(0,0,0,.38); font-size:0.9em; z-index:1000; min-width:120px; 
+	}
+    .ui-title { font-weight:700; font-size:0.9em; letter-spacing:.3px; color:#cfe9d0; display:flex; align-items:center; gap:8px; }
+    .ui-title .dot { width:8px; height:8px; border-radius:50%; background:#7ed957; box-shadow:0 0 12px #7ed957cc; }
+    .ui-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; flex-direction:column; }
+    .ui-grid { display:flex; gap:8px 12px; align-items:center; flex-direction: column }
+    .ui-grid > span { font-size:0.7em;}
+    .ui-sep { height:1px; background:linear-gradient(90deg, transparent, rgba(255,255,255,.12), transparent); margin:2px 0; }
+
+    .btn { border:1px solid rgba(255,255,255,.22); background:rgba(255,255,255,.08); color:#e9eef6; padding:6px 12px; border-radius:10px; cursor:pointer; transition:.2s; font-size:0.9em; }
+    .btn:hover { background:rgba(255,255,255,.16); border-color:rgba(255,255,255,.38); }
+    .btn.ghost { background:transparent; }
+
+    .switch{ position:relative; display:inline-block; width:30px; height:14px; }
+    .switch input{ opacity:0; width:0; height:0; }
+    .slider{ position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:#555; transition:.25s; border-radius:20px; }
+    .slider:before{ position:absolute; content:""; height:10px; width:10px; left:2px; bottom:2px; background:#fff; transition:.25s; border-radius:50%;}
+    
+	input:checked + .slider{ background:#7ed957; } input:checked + .slider:before{ transform:translateX(16px); }
+	input[type=range]{ -webkit-appearance:none; width:90%; height:4px; background:#555; outline:none; opacity:.85; transition:opacity .2s; border-radius:2px; margin:0; }
+    input[type=range]:hover{ opacity:1; }
+    input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:12px; height:12px; background:#7ed957; cursor:pointer; border-radius:50%; }
+    input[type=range]::-moz-range-thumb{ width:12px; height:12px; background:#7ed957; cursor:pointer; border-radius:50%; }
+
+    #status{ position:absolute; top:12px; left:12px; font-size:13px; opacity:.95; background:rgba(10,16,28,.78); padding:6px 10px; border-radius:8px; border:1px solid rgba(255,255,255,.12); }
+
+    #log{ 
+		position:absolute; 
+		right:12px; 
+		bottom:12px; width:340px; 
+		max-height:7.5em; 
+		overflow:auto;
+		display:none; 
+		font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; 
+		background:rgba(0,0,0,.8);
+		border:1px solid rgba(255,255,255,.15); 
+		border-radius:10px; padding:8px 10px; 
+		box-shadow:0 4px 20px rgba(0,0,0,.4);
+		transition:max-height .3s ease-out; 
+	}
+    #log.collapsed{ max-height:1.5em; }
+	#log b{ color:#7ed957; }
+    #log::-webkit-scrollbar{ width:4px; } 
+	#log::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.3); border-radius:2px; }
+
+    .loading-indicator{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; }
+    .spinner{ border:3px solid rgba(255,255,255,.1); border-top:3px solid #7ed957; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:0 auto 10px; }
+    
+	@keyframes spin{
+		0%{ transform:rotate(0deg);} 
+		100%{ transform:rotate(360deg);} 
+	}
+
+    #countryInfo{ 
+		position:absolute; top:12px; right:12px; width:180px; padding:8px 10px; background:rgba(10,16,28,.86); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.12); border-radius:10px;
+		box-shadow:0 4px 20px rgba(0,0,0,.3); font-size:11px; line-height:1.6; opacity:0; pointer-events:none; transition:opacity .25s; z-index:10; 
+	}
+    #countryInfo.visible{ opacity:1; pointer-events:auto; }
+    #countryInfo h3{ font-size:16px; font-weight:700; margin:0 0 6px; color:#7ed957; }
+    #countryInfo p{ margin:0; display:flex; justify-content:space-between; gap:6px; }
+    #countryInfo p span:last-child{ font-weight:600; color:#e9eef6; text-align:right; }
+
+    #tourModal { position:absolute; inset:0; display:none; align-items:center; justify-content:center; }
+    #tourModal .card{ background:rgba(10,16,28,.92); border:1px solid rgba(255,255,255,.12); border-radius:14px; padding:18px 20px; text-align:center; box-shadow:0 8px 40px rgba(0,0,0,.5); }
+    #tourModal h2{ margin:0 0 10px; font-size:22px; }
+    #tourModal .row{ display:flex; gap:8px; justify-content:center; }
+
+    /* === Quiz UI === */
+    #scoreBadge{
+		position:absolute; top:12px; left:12px;
+		background:rgba(10,16,28,.9); border:1px solid rgba(255,255,255,.12);
+		padding:6px 10px; border-radius:10px; font-weight:700; z-index:1100;
+		display:none;
+    }
+    #quiz{
+		position:absolute; left:50%; bottom:84px; transform:translateX(-50%);
+		background:rgba(10,16,28,.9); border:1px solid rgba(255,255,255,.12);
+		border-radius:14px; padding:12px; width:min(360px, 92vw); z-index:1050;
+		display:flex; flex-direction:column; gap:10px; backdrop-filter:blur(8px);
+    }
+    #quiz .q-flag{ display:flex; justify-content:center; }
+    #quiz .q-flag img{ width:120px; height:auto; border-radius:6px; border:1px solid rgba(255,255,255,.18); }
+    #quiz .q-title{ font-weight:700; text-align:center; }
+    #quiz .q-choices{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    #quiz .q-choices .btn{ padding:8px 10px; }
+    #quiz .q-choices .btn.correct{ outline:2px solid #7ed957; }
+    #quiz .q-choices .btn.wrong{ outline:2px solid #e74c3c; }
+    #quiz .q-foot{ display:flex; justify-content:center; }
+    #quiz[hidden]{ display:none !important; }
+
+	.ui-area {
+		display: flex;
+		overflow: auto;
+		font-size: 0.9em;
+		gap: 10px;
+		/* flex-direction: row; */
+		width: 130px;
+		flex-wrap: wrap;
+		justify-content: space-between;
+	}
+
+
+    /* 모바일: 하단바 위에 퀴즈 카드 위치 */
+    @media (max-width: 640px) {
+		input[type=range]{ -webkit-appearance:none; width:15%; }
+		#ui{
+			position: fixed !important;
+			left: 50% !important;
+			bottom: max(8px, env(safe-area-inset-bottom)) !important;
+			transform: translateX(-50%);
+			width: calc(100vw - 16px);
+			min-width: 0;
+			padding: 6px 8px;
+			border-radius: 12px;
+			gap: 0;
+			z-index: 1000;
+		}
+		#ui .ui-title, #ui .ui-sep, #ui .ui-grid{ display:none !important; }
+		#ui .ui-row{
+			display:flex !important; flex-direction:row; align-items:center; justify-content:space-between;
+			gap:6px; flex-wrap:nowrap; width:100%;
+		}
+		#ui .btn{ flex:1 1 auto; padding:8px 10px; font-size:12px; border-radius:10px; white-space:nowrap; }
+		#ui .btn.ghost{ flex:0 0 auto; }
+
+		#log{ display:none !important; }
+		.ui-area {display: flex;    overflow: auto;    font-size: 0.9em;    gap: 10px;    /* flex-direction: row; */    width: 100%;     justify-content: space-between;}
+
+		/* 팝업을 가로 카드로 */
+		#countryInfo{
+			position: fixed !important; left:50% !important; transform:translateX(-50%);
+			width: calc(100vw - 16px); max-width: 100vw; display:flex; gap:8px; padding:8px 10px; border-radius:12px;
+			z-index:1001; justify-content:space-evenly; flex-wrap:wrap; flex-direction:row; align-items:center;
+		}
+
+		/* 퀴즈 카드: 하단 UI 위로 붙이기 */
+		#quiz{ bottom: calc(max(8px, env(safe-area-inset-bottom)) + var(--uiH, 56px)); width: calc(100vw - 16px); }
+    }
+	
+    /* 퀴즈 중 배경 클릭 차단용 스크림 */
+    #scrim{		position:absolute; inset:0; 		z-index:1048;                 /* #quiz(1050) 아래, 캔버스 위 */		background:transparent; 		pointer-events:auto;          /* 이벤트를 받아서 뒤로 못 가게 */	}
+
+	/* [추가] 더보기 토글: 모바일에서도 숨긴 섹션을 펼침 */
+	#ui.expanded .ui-title,	#ui.expanded .ui-sep,	#ui.expanded .ui-grid{	  display: block !important;         /* 제목/구분선 */	}
+	#ui.expanded .ui-grid{	display: flex !important;		flex-direction: row;		gap: 20px;		flex-wrap: wrap;		justify-content: space-between;	}
+
+	#ui.expanded{  padding: 10px 10px 12px;           /* 펼쳤을 때 여백 보정 */ }
+  </style>
+
+  <!-- 동적 안전영역 보정 변수 설정 -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const uiEl = document.getElementById('ui');
+      function setUiHeightVar(){
+        const h = uiEl ? uiEl.offsetHeight : 56; // fallback
+        document.documentElement.style.setProperty('--uiH', h + 'px');
+      }
+      window.addEventListener('resize', setUiHeightVar);
+      new ResizeObserver(setUiHeightVar).observe(uiEl);
+      setUiHeightVar();
+    });
+  </script>
+</head>
+
+<body>
+  <div class="wrap" id="app">
+    <canvas id="stage"></canvas>
+    <!-- 클릭 차단용 스크림(투명) -->
+	<div id="scrim" hidden></div>
+
+    <div id="status">
+      <div class="loading-indicator">
+        <div class="spinner"></div>
+        로딩 중…
+      </div>
+    </div>
+
+    <div id="countryInfo"></div>
+
+	<div id="ui" style="display:none;">
+		<div class="ui-title"><span class="dot"></span>글로브 컨트롤</div>
+		<div class="ui-sep"></div>
+		<div class="ui-grid">
+		   <div class="ui-area" >
+				<span>자동 회전</span>
+				<label class="switch"><input type="checkbox" id="autoRotateToggle"><span class="slider"></span></label>
+
+				<span>대기권(구름)</span>
+				<label class="switch"><input type="checkbox" id="cloudToggle" checked><span class="slider"></span></label>
+
+				<span>나라 라벨</span>
+				<label class="switch"><input type="checkbox" id="labelsToggle" checked><span class="slider"></span></label>
+
+				<span>경계선</span>
+				<label class="switch"><input type="checkbox" id="borderToggle"><span class="slider"></span></label>
+
+				<span>줌 모드</span>
+				<label class="switch"><input type="checkbox" id="zoomToggle"><span class="slider"></span></label>
+			</div>
+			<div style=" display: contents;    overflow: auto;font-size:0.9em">
+				<span>라벨 크기</span>
+				<input type="range" id="labelScaleSlider" min="0.2" max="2.0" step="0.1" value="0.27">
+
+				<span>최소 거리</span>
+				<input type="range" id="minDistSlider" min="3.1" max="20" step="0.2" value="3.2">
+
+				<span>최대 거리</span>
+				<input type="range" id="maxDistSlider" min="3.1" max="50" step="0.2" value="5.2">
+			</div>
+		</div>
+		<div class="ui-sep"></div>
+		<div class="ui-row">
+			<!-- [추가] 모바일 숨김 UI를 여는 토글 버튼 -->
+			<button id="moreBtn" class="btn ghost" aria-expanded="false">더보기</button>
+
+			<button id="quizStartBtn" class="btn">퀴즈 시작</button>
+			<button id="autoPlayBtn" class="btn">자동플레이</button>
+			<button id="autoPlayStopBtn" class="btn ghost">멈춤</button>
+			<button id="autoPlayContinueBtn" class="btn" style="display:none;">이어보기</button>
+			<button id="resetView" class="btn ghost">시점 리셋</button>
+		</div>
+    </div>
+
+   
+
+    <!-- 퀴즈 카드 -->
+    <div id="quiz" hidden>
+	 <!-- 점수 뱃지 -->
+		<div id="scoreBadge" aria-live="polite">정답 0</div>
+		<div class="q-flag"><img id="qFlag" alt="국기" /></div>
+		<div class="q-title" id="qTitle">문제 로딩 중…</div>
+		<div class="q-choices">
+			<button class="btn q" data-idx="0"></button>
+			<button class="btn q" data-idx="1"></button>
+			<button class="btn q" data-idx="2"></button>
+			<button class="btn q" data-idx="3"></button>
+		</div>
+		<div class="q-foot">
+			<button id="qClose" class="btn ghost">그만하기</button>  <!-- [추가] -->
+			<button id="qNext" class="btn" disabled>다음 문제</button>
+		</div>
+    </div>
+
+    <div id="tourModal">
+		<div class="card">
+			<h2>월드투어 종료</h2>
+			<div class="row">
+				<button id="tourReplay" class="btn">다시 플레이</button>
+				<button id="tourReset" class="btn ghost">초기화</button>
+			</div>
+		</div>
+    </div>
+
+    <div id="log"><b>시스템 로그</b><br/></div>
+  </div>
+
+  <!-- Libs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tweenjs/tween.js@18.6.4/dist/tween.umd.js"></script>
+
+  <!-- Atmosphere shaders -->
+  <script id="vertexShaderAtmosphere" type="x-shader/x-vertex">
+    varying vec3 vNormal; varying vec3 vViewPosition;
+    void main(){ vNormal=normalize(normalMatrix*normal); vec4 mv=modelViewMatrix*vec4(position,1.0); vViewPosition=-mv.xyz; gl_Position=projectionMatrix*mv; }
+  </script>
+  
+  <script id="fragmentShaderAtmosphere" type="x-shader/x-fragment">
+    varying vec3 vNormal; varying vec3 vViewPosition; uniform vec3 glowColor;
+    void main(){ float intensity = pow(0.9 - dot(vNormal, normalize(vViewPosition)), 2.0); gl_FragColor = vec4(glowColor, intensity); }
+  </script>
+
+  <script>
+    // [추가] 전역 참조: 다른 함수(showQuestion 등)에서 접근 가능하도록
+	const quizEl  = document.getElementById('quiz');
+	const scrimEl = document.getElementById('scrim');
+
+	// [추가] 퀴즈/스크림에서 배경으로의 이벤트 전파 차단
+	['pointerdown','mousedown','click','touchstart'].forEach(type=>{
+	  quizEl.addEventListener(type,  e => e.stopPropagation(), {passive:true});
+	  scrimEl.addEventListener(type, e => e.stopPropagation(), {passive:true});
+	});
+
+    // [추가] 퀴즈 종료(중단) 처리
+    function endQuiz(){
+		isQuizActive = false;
+		quizCurrent = null;
+		document.getElementById('quiz').hidden = true;
+		setScoreBadgeVisible(false);         // [추가] 퀴즈 종료 시 숨김
+		scrimEl.hidden = true;
+		clearHighlight();
+		$countryInfo.classList.remove('visible');
+	}
+    
+    /* ========= 공통 유틸/로그 ========= */
+    const $log = document.getElementById('log');
+    const $countryInfo = document.getElementById('countryInfo');
+    const $tourModal = document.getElementById('tourModal');
+    const $status = document.getElementById('status');
+    const numberFormatter = new Intl.NumberFormat('ko-KR');
+
+    function logLine(...args){
+		const t = new Date().toLocaleTimeString();
+		$log.innerHTML += `[${t}] ` + args.map(String).join(' ') + '<br>';
+		$log.scrollTop = $log.scrollHeight;
+		console.log('[Globe]', ...args);
+    }
+	
+    window.addEventListener('error', e => logLine('❌ 에러:', e.message, `(${e.filename}:${e.lineno})`));
+    window.addEventListener('unhandledrejection', e => logLine('❌ Promise 에러:', (e.reason && e.reason.message) || e.reason));
+
+    function clearGroup(g){
+		for(let i=g.children.length-1;i>=0;i--){
+			const ch=g.children[i];
+			if(ch.material && ch.material.map) ch.material.map.dispose?.();
+			ch.material?.dispose?.(); ch.geometry?.dispose?.(); g.remove(ch);
+		}
+    }
+	
+    function drawRoundRect(ctx,x,y,w,h,r=8){
+		ctx.beginPath(); ctx.moveTo(x+r,y);
+		ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+		ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+    }
+
+    /* ========= REST Countries ========= */
+    const REST_COUNTRIES_ENDPOINT = 'https://restcountries.com/v3.1/alpha/';
+    const countryInfoCache = new Map();
+    let lastInfoRequestId = 0;
+    const zeroPad3 = v => String(v ?? '').trim().replace(/\D/g,'').padStart(3,'0');
+
+    async function fetchCountryInfoById(ccn3Raw){
+		const ccn3 = zeroPad3(ccn3Raw);
+		if(!ccn3) return null;
+		if(countryInfoCache.has(ccn3)) return countryInfoCache.get(ccn3);
+	
+		const fields = [
+			'name','capital','capitalInfo','cca2','cca3','ccn3','population',
+			'region','subregion','languages','currencies','latlng','maps','flags','timezones'
+		].join(',');
+
+		const url = `${REST_COUNTRIES_ENDPOINT}${encodeURIComponent(ccn3)}?fields=${fields}`;
+
+		try{
+			const res = await fetch(url); if(!res.ok) throw new Error(`REST ${res.status}`);
+			const obj = await res.json();
+			const info = {
+				ccn3,
+				officialName: obj?.name?.official || obj?.name?.common || '',
+				commonName: obj?.name?.common || '',
+				capital: Array.isArray(obj?.capital) ? obj.capital[0] : (obj?.capital || null),
+				capitalLatLng: Array.isArray(obj?.capitalInfo?.latlng) ? obj.capitalInfo.latlng : null,
+				cca2: obj?.cca2 || null, 
+				cca3: obj?.cca3 || null,
+				population: obj?.population || null, 
+				region: obj?.region || null, 
+				subregion: obj?.subregion || null,
+				languages: obj?.languages || null, 
+				currencies: obj?.currencies || null,
+				latlng: obj?.latlng || null, 
+				flags: obj?.flags || null, 
+				maps: obj?.maps || null, 
+				timezones: obj?.timezones || null
+			};
+			countryInfoCache.set(ccn3, info);
+			return info;
+		}catch(err){ console.warn('[REST] failed', err); return null; }
+    }
+
+    function makeCountryInfoHTML(props, lon, lat, rest){
+		const nameLocal = props.name || props.ADMIN || props.name_long || '알 수 없음';
+		const name = rest?.officialName || nameLocal;
+		const flag = rest?.flags?.png || rest?.flags?.svg;
+		const capital = rest?.capital || '알 수 없음';
+		const pop = rest?.population ?? props.pop_est ?? 0;
+		const gdp = props.gdp_md_est || 0;
+		const iso3 = props.iso_a3 || rest?.cca3 || '알 수 없음';
+		const iso2 = rest?.cca2 || '';
+		const tz = (rest?.timezones || []).join(', ');
+		const osm = rest?.maps?.openStreetMaps;
+
+		return `
+			<h3>${name}</h3>
+			${flag ? `<img src="${flag}" alt="Flag of ${name}" style="width:120px; margin:8px 0; border:1px solid rgba(255,255,255,.2); border-radius:4px;" />` : ''}
+			<p><span>대륙/지역</span><span>${rest?.region || props.continent || '알 수 없음'}${rest?.subregion ? ' / ' + rest.subregion : ''}</span></p>
+			<p><span>수도</span><span>${capital}</span></p>
+			<p><span>인구</span><span>${numberFormatter.format(pop)} 명</span></p>
+			<p><span>GDP(2020)</span><span>${numberFormatter.format(gdp)} 백만달러</span></p>
+			<p><span>위도</span><span>${lat.toFixed(4)}°</span></p>
+			<p><span>경도</span><span>${lon.toFixed(4)}°</span></p>
+			<p><span>ISO</span><span>${iso3}${iso2 ? ' / '+iso2 : ''}</span></p>
+			<p><span>시간대</span><span>${tz || '-'}</span></p>
+			${osm ? `<p><span>지도</span><span><a href="${osm}" target="_blank" style="color:#fff;text-decoration:underline">OpenStreetMap</a></span></p>` : ''}
+		`;
+    }
+
+    /* ========= Three.js 기본 ========= */
+    const HIGHLIGHT_RENDER_ORDER = 999;
+    const tmpVec3 = new THREE.Vector3(), globeCenter = new THREE.Vector3();
+    const canvas = document.getElementById('stage');
+    const renderer = new THREE.WebGLRenderer({canvas,antialias:true,alpha:true,powerPreference:"high-performance"});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45,1,0.1,1000); 
+	camera.position.set(0,0,9);
+
+    const OC = (THREE && THREE.OrbitControls) || window.OrbitControls;
+    if (typeof OC !== 'function') {
+		logLine('❌ OrbitControls 로드 실패'); 
+		throw new Error('OrbitControls not available'); 
+	}
+    const controls = new OC(camera, renderer.domElement);
+    controls.enableDamping = true; controls.dampingFactor = 0.05;
+    controls.enablePan = false; controls.minDistance = 3.2; controls.maxDistance = 20;
+    controls.target.set(0,0,0); controls.update();
+
+    function resize(){
+		const el=document.getElementById('app');
+		const w=el.clientWidth,h=el.clientHeight;
+		renderer.setSize(w,h,false);
+		camera.aspect=w/h;
+		camera.updateProjectionMatrix(); 
+	}
+    window.addEventListener('resize', resize); resize();
+
+    /* 조명 */
+    scene.add(new THREE.AmbientLight(0xffffff,0.8));
+    const sunLight = new THREE.DirectionalLight(0xffffff,1.35); 
+	sunLight.position.set(5,3,5); 
+	scene.add(sunLight);
+
+    /* 지구 */
+    const globe = new THREE.Group(); 
+	scene.add(globe);
+    const EARTH_RADIUS = 3;
+
+    const earth = new THREE.Mesh(
+		new THREE.SphereGeometry(EARTH_RADIUS,64,64),
+		new THREE.MeshPhongMaterial({color:0x3094e6,shininess:28,transparent:false,opacity:1,depthWrite:true})
+    );
+    globe.add(earth);
+
+    /* === Clouds (대기권 구름 레이어) === */
+    let clouds = null; // 전역 참조
+    let cloudVisibleDesired = true; // 로드 전 토글 대응
+
+    /* 그룹 */
+    const labelsGroup = new THREE.Group(); 
+	globe.add(labelsGroup);
+    const borderGroup = new THREE.Group(); 
+	globe.add(borderGroup);
+    borderGroup.renderOrder = 2; // 경계선을 구름보다 나중에 렌더
+    const highlightGroup = new THREE.Group(); 
+	globe.add(highlightGroup);
+    const pickGroup = new THREE.Group(); 
+	globe.add(pickGroup);
+
+    let labelScale = 0.27;
+
+    /* 좌표/센트로이드 */
+    function lonLatToVec3(lon,lat,r=EARTH_RADIUS+0.06){
+		const phi=(90-lat)*Math.PI/180, theta=(lon+180)*Math.PI/180;
+		return new THREE.Vector3(-r*Math.sin(phi)*Math.cos(theta), r*Math.cos(phi), r*Math.sin(phi)*Math.sin(theta));
+    }
+	
+    const lonLatToUnitVec3=(lon,lat)=>lonLatToVec3(lon,lat,1).normalize();
+    function ringCentroid(r){
+		let A=0,Cx=0,Cy=0; 
+		for(let i=0,n=r.length-1;i<n;i++){
+			const[x1,y1]=r[i],[x2,y2]=r[i+1]; 
+			const c=x1*y2-x2*y1; 
+			A+=c; 
+			Cx+=(x1+x2)*c; 
+			Cy+=(y1+y2)*c;
+		} 
+		if(A===0){
+			const xs=r.map(p=>p[0]),ys=r.map(p=>p[1]); 
+			return [xs.reduce((a,b)=>a+b,0)/xs.length, ys.reduce((a,b)=>a+b,0)/ys.length,0];
+		} 
+		A*=.5; 
+		return [Cx/(6*A),Cy/(6*A),Math.abs(A)];
+	}
+	
+    function polygonCentroid(coords){ 
+		let best=null; 
+		for(const ring of coords){
+			const[cx,cy,a]=ringCentroid(ring); 
+			if(!best||a>best.area) best={
+				lon:cx,lat:cy,area:a
+			};
+		} return best?[best.lon,best.lat]:[0,0]; 
+	}
+    
+	function featureCentroid(geom){ 
+		if(!geom) return [0,0]; 
+		if(geom.type==='Polygon') return polygonCentroid(geom.coordinates); 
+		if(geom.type==='MultiPolygon'){ 
+			let best=null;
+			for(const poly of geom.coordinates){ 
+				const [cx,cy]=polygonCentroid(poly); 
+				const[, ,a]=ringCentroid(poly[0]||[]); 
+				if(!best||(a||0)>best.area) best={lon:cx,lat:cy,area:a||0}; 
+			} return best?[best.lon,best.lat]:[0,0]; 
+		} return [0,0]; 
+	}
+
+    /* 라벨/경계선/텍스처 */
+    function createLabelSprite(text,bg='#fff'){
+		const c=document.createElement('canvas'),ctx=c.getContext('2d'); 
+		const pad=12;
+		ctx.font='bold 18px "Malgun Gothic","Apple SD Gothic Neo",Arial,sans-serif';
+		const textWidth=Math.ceil(ctx.measureText(text).width), textHeight=28;
+		c.width=(textWidth+pad*2)*2;
+		c.height=(textHeight+pad)*2;
+		ctx.scale(2,2);
+		const w=textWidth+pad*2, h=textHeight+pad;
+		ctx.fillStyle=bg;
+		drawRoundRect(ctx,0,0,w,h,8);
+		ctx.fill();
+		ctx.strokeStyle='rgba(0,0,0,.3)';
+		ctx.lineWidth=1; 
+		drawRoundRect(ctx,0,0,w,h,8);
+		ctx.stroke();
+		ctx.fillStyle='#000'; 
+		ctx.textAlign='center'; 
+		ctx.textBaseline='middle'; 
+		ctx.font='bold 18px "Malgun Gothic","Apple SD Gothic Neo",Arial,sans-serif'; 
+		ctx.fillText(text,w/2,h/2);
+		
+		const tex=new THREE.CanvasTexture(c);
+		tex.needsUpdate=true;
+		const mat=new THREE.SpriteMaterial({map:tex,transparent:true,alphaTest:.1});
+		const spr=new THREE.Sprite(mat); 
+		const s=0.01*labelScale;
+	
+		spr.scale.set(w*s,h*s,1);
+		spr.userData.baseWidth=w; 
+		spr.userData.baseHeight=h;
+		return spr;
+    }
+	
+    function updateLabelScale(v){
+		if(v) labelScale=parseFloat(v); 
+		labelsGroup.children.forEach(ch=>{
+			if(!ch.isSprite) return; 
+			const w=ch.userData.baseWidth,h=ch.userData.baseHeight; 
+			const s=0.01*labelScale; 
+			ch.scale.set(w*s,h*s,1); 
+		}); 
+		logLine(`라벨 크기 변경: ${Math.round(labelScale*100)}%`); 
+	}
+
+    let countryData=null;
+
+    /* 인트로 파라미터 */
+    const INTRO = { globeDuration: 600, totalLabelWindow: 3000, labelFallDuration: 600, labelBounce: 0.18 };
+    const ATMOSPHERE_RADIUS = EARTH_RADIUS + 0.18;
+    let atmosphere=null;
+    let introRan = false;
+
+    function addCountryLabels(features, {animate=false}={}){
+		clearGroup(labelsGroup);
+		const sorted = features.slice().sort((a,b)=>Number(b.id||0)-Number(a.id||0));
+		const palette = ['#2ecc71','#3498db','#9b59b6','#e67e22','#e74c3c','#1abc9c','#f1c40f','#7f8c8d','#d35400','#16a085','#2980b9','#8e44ad'];
+		const startR = EARTH_RADIUS + 0.18, finalR = EARTH_RADIUS + 0.36;
+
+		const N=sorted.length; const stagger = (N>1) ? Math.max(0,(INTRO.totalLabelWindow-INTRO.labelFallDuration)/(N-1)) : 0;
+
+		sorted.forEach((f,i)=>{
+			const p=f.properties||{}; const name=p.name||p.ADMIN||`Unknown_${i}`;
+			const [lon,lat]=featureCentroid(f.geometry);
+			const posStart=lonLatToVec3(lon,lat,startR), posEnd=lonLatToVec3(lon,lat,finalR);
+
+			const spr=createLabelSprite(name,palette[i%palette.length]);
+			spr.position.copy(animate?posStart:posEnd);
+			spr.renderOrder=HIGHLIGHT_RENDER_ORDER+2;
+			spr.userData.countryFeature=f;
+			spr.userData.originalColor=palette[i%palette.length];
+			spr.material.transparent=true;
+			spr.material.opacity=0;
+			labelsGroup.add(spr);
+
+			const marker=new THREE.Mesh(new THREE.SphereGeometry(0.0082,2,2), new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.85,depthTest:false}));
+			marker.position.copy(animate?posStart:posEnd);
+			marker.renderOrder=HIGHLIGHT_RENDER_ORDER+1;
+			marker.material.opacity=0;
+			labelsGroup.add(marker);
+
+			spr.userData.marker = marker;
+
+			if(animate){
+				const tweenObj={t:0,o:0};
+				new TWEEN.Tween(tweenObj)
+				.to({t:1,o:1}, INTRO.labelFallDuration)
+				.delay(i*stagger)
+				.easing(TWEEN.Easing.Quadratic.Out)
+				.onUpdate(()=>{
+					spr.position.lerpVectors(posStart,posEnd,tweenObj.t);
+					marker.position.copy(spr.position);
+					spr.material.opacity=tweenObj.o;
+					marker.material.opacity=.85*tweenObj.o;
+				})
+				.onComplete(()=>{
+					if(INTRO.labelBounce>0){
+						const bumpStart=spr.position.clone(), bumpEnd=lonLatToVec3(lon,lat, finalR + INTRO.labelBounce*(finalR-EARTH_RADIUS));
+						const o={b:0}; new TWEEN.Tween(o).to({b:1},220).easing(TWEEN.Easing.Quadratic.Out).yoyo(true).repeat(1)
+						.onUpdate(()=>{ spr.position.lerpVectors(bumpStart,bumpEnd,o.b); marker.position.copy(spr.position); }).start();
+					}
+				}).start();
+			}
+		});
+
+		updateLabelScale();
+		logLine(`✅ 국가 라벨 생성: ${sorted.length}개 ${animate?'(인트로 낙하 포함)':''}`);
+    }
+
+	// 점수 배지 표시/숨김
+	function setScoreBadgeVisible(v){
+		const b = document.getElementById('scoreBadge');
+		if (!b) return;
+		b.style.display = v ? 'block' : 'none';
+	}  
+    
+    
+    function addCountryBorders(countryFeatures){
+		clearGroup(borderGroup);
+		const positions=[];
+		countryFeatures.forEach(f=>{
+			const g=f.geometry; if(!g) return;
+			const pushLine=(line)=>{ 
+				for(let i=0;i<line.length-1;i++){ 
+					const [lon1,lat1]=line[i],[lon2,lat2]=line[i+1];
+					const v1=lonLatToVec3(lon1,lat1,EARTH_RADIUS+0.006), v2=lonLatToVec3(lon2,lat2,EARTH_RADIUS+0.006);
+					positions.push(v1.x,v1.y,v1.z,v2.x,v2.y,v2.z);
+				} 
+			};
+			if(g.type==='Polygon'){ g.coordinates.forEach(pushLine); }
+			else if(g.type==='MultiPolygon'){ g.coordinates.forEach(poly=>poly.forEach(pushLine)); }
+		});
+		const geom=new THREE.BufferGeometry(); 
+		geom.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+		const main=new THREE.LineSegments(geom,new THREE.LineBasicMaterial({color:0x00ffaa,transparent:true,opacity:1,depthTest:true,depthWrite:false}));
+		main.renderOrder = 2;
+		borderGroup.add(main);
+		logLine(`✅ 국경선 생성 (${positions.length/6} segments)`);
+    }
+
+    /* 픽킹(국가 클릭용 히트메시) */
+    function addCountryPickMeshes(features){
+		clearGroup(pickGroup);
+		const PICK_R = EARTH_RADIUS + 0.005;
+
+		const build = (rings, feature, color) => {
+			if(!rings.length || rings[0].length < 3) return;
+
+			const [clon, clat] = polygonCentroid(rings);
+			const nC = lonLatToUnitVec3(clon, clat);
+			const tmpUp = Math.abs(nC.y) > 0.9 ? new THREE.Vector3(1,0,0) : new THREE.Vector3(0,1,0);
+			const u = tmpUp.clone().cross(nC).normalize();
+			const v = nC.clone().cross(u).normalize();
+			const cP = nC.clone().multiplyScalar(PICK_R);
+
+			const rings2D = [];
+			const flatN = [];
+			rings.forEach(r => {
+				const cleaned = (r.length>1 && r[0][0]===r[r.length-1][0] && r[0][1]===r[r.length-1][1]) ? r.slice(0,-1) : r;
+				if(cleaned.length < 3) return;
+				const pts2D = [];
+				cleaned.forEach(([lon, lat]) => {
+					const n = lonLatToUnitVec3(lon, lat);
+					flatN.push(n);
+					const p = n.clone().multiplyScalar(PICK_R);
+					const rel = p.sub(cP);
+					pts2D.push(new THREE.Vector2(rel.dot(u), rel.dot(v)));
+				});
+				rings2D.push(pts2D);
+			});
+			if(!rings2D.length) return;
+
+			const faces = THREE.ShapeUtils.triangulateShape(rings2D[0], rings2D.slice(1));
+			const positions = [];
+			const pushTri = (a,b,c) => {
+				const A = flatN[a].clone().multiplyScalar(PICK_R);
+				const B = flatN[b].clone().multiplyScalar(PICK_R);
+				const C = flatN[c].clone().multiplyScalar(PICK_R);
+				positions.push(A.x,A.y,A.z, B.x,B.y,B.z, C.x,C.y,C.z);
+			};
+			faces.forEach(([a,b,c]) => pushTri(a,b,c));
+
+			const geom = new THREE.BufferGeometry();
+			geom.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+			geom.computeVertexNormals();
+
+			const mat = new THREE.MeshBasicMaterial({
+				  color: 0x000000,
+				  transparent: true,
+				  opacity: 0,
+				  side: THREE.FrontSide,
+				  depthWrite: true,
+				  depthTest: true
+			});
+
+			const mesh = new THREE.Mesh(geom, mat);
+			mesh.userData.countryFeature = feature;
+			mesh.userData.originalColor = color;
+			pickGroup.add(mesh);
+		};
+
+		const palette = ['#2ecc71','#3498db','#9b59b6','#e67e22','#e74c3c','#1abc9c','#f1c40f','#7f8c8d','#d35400','#16a085','#2980b9','#8e44ad'];
+		let idx = 0;
+
+		features.forEach(f => {
+			const color = palette[idx++ % palette.length];
+			const g = f.geometry; if(!g) return;
+			if(g.type === 'Polygon') build(g.coordinates, f, color);
+			else if(g.type === 'MultiPolygon') g.coordinates.forEach(poly => build(poly, f, color));
+		});
+
+		logLine('🧭 국가 픽 메쉬 생성 완료');
+    }
+
+    /* 하이라이트(곡면 솔리드) */
+    let activeHighlight=[]; 
+	let highlightTween=null; 
+	let attachedLabel=null; 
+	let attachedLabelPrevParent=null;
+	
+    function reparentKeepWorld(obj,newParent){
+		const wm=obj.matrixWorld.clone();
+		newParent.add(obj);
+		obj.updateMatrixWorld(true);
+		const inv=new THREE.Matrix4().copy(newParent.matrixWorld).invert();
+		obj.matrix.copy(inv.multiply(wm));
+		obj.matrix.decompose(obj.position,obj.quaternion,obj.scale);
+    }
+	
+    function setAtmosphereColor(color){
+		if(!atmosphere?.material?.uniforms) return;
+		const c = new THREE.Color(color);
+		atmosphere.material.uniforms.glowColor.value.set(c);
+    }
+	
+    function clearHighlight(){
+		if(highlightTween) highlightTween.stop();
+		activeHighlight.forEach(o=>{ o.geometry?.dispose?.(); Array.isArray(o.material)?o.material.forEach(m=>m.dispose?.()):o.material?.dispose?.(); highlightGroup.remove(o);});
+		activeHighlight=[]; 
+		highlightGroup.scale.set(1,1,1);
+		if(attachedLabel && attachedLabelPrevParent){ reparentKeepWorld(attachedLabel, attachedLabelPrevParent); 
+		attachedLabel.position.normalize().multiplyScalar(EARTH_RADIUS+0.36); 
+		attachedLabel.renderOrder=HIGHLIGHT_RENDER_ORDER+2; }
+		attachedLabel=attachedLabelPrevParent=null; 
+		setAtmosphereColor(0x3c4de6); 
+		$countryInfo.classList.remove('visible');
+    }
+	
+    function buildSphericalSolid(feature,color=0xffff00,lift=0.3,depth=0.06){
+      const g=feature.geometry; if(!g) return;
+      const mat=new THREE.MeshPhongMaterial({color,transparent:true,opacity:1,shininess:32,side:THREE.DoubleSide,depthTest:true,depthWrite:true});
+      const Rin=EARTH_RADIUS+lift, Rout=EARTH_RADIUS+lift+depth;
+
+      const build=(rings)=>{
+        if(!rings.length||rings[0].length<3) return;
+        const [clon,clat]=polygonCentroid(rings);
+        const nC=lonLatToUnitVec3(clon,clat);
+        const tmpUp=Math.abs(nC.y)>0.9?new THREE.Vector3(1,0,0):new THREE.Vector3(0,1,0);
+        const u=tmpUp.clone().cross(nC).normalize(), v=nC.clone().cross(u).normalize();
+        const cP=nC.clone().multiplyScalar((Rin+Rout)*.5);
+
+        const rings2D=[], ringsN=[];
+        rings.forEach(ring=>{
+          const cleaned=(ring.length>1 && ring[0][0]===ring[ring.length-1][0] && ring[0][1]===ring[ring.length-1][1])?ring.slice(0,-1):ring;
+          if(cleaned.length<3) return; const pts2D=[], ptsN=[];
+          cleaned.forEach(([lon,lat])=>{ const n=lonLatToUnitVec3(lon,lat); ptsN.push(n); const p=n.clone().multiplyScalar((Rin+Rout)*.5); const rel=p.sub(cP); pts2D.push(new THREE.Vector2(rel.dot(u), rel.dot(v))); });
+          rings2D.push(pts2D); ringsN.push(ptsN);
+        });
+        if(!rings2D.length) return;
+        const faces=THREE.ShapeUtils.triangulateShape(rings2D[0],rings2D.slice(1));
+        const flatN=[]; for(const r of ringsN) flatN.push(...r);
+
+        const positions=[]; const pushTri=(a,b,c,rad)=>{ const A=flatN[a].clone().multiplyScalar(rad),B=flatN[b].clone().multiplyScalar(rad),C=flatN[c].clone().multiplyScalar(rad); positions.push(A.x,A.y,A.z,B.x,B.y,B.z,C.x,C.y,C.z); };
+        faces.forEach(([a,b,c])=>pushTri(a,b,c,Rout)); faces.forEach(([a,b,c])=>pushTri(c,b,a,Rin));
+
+        const addSide=(ringN)=>{ const m=ringN.length; for(let i=0;i<m;i++){ const n0=ringN[i], n1=ringN[(i+1)%m]; const p0o=n0.clone().multiplyScalar(Rout), p1o=n1.clone().multiplyScalar(Rout), p0i=n0.clone().multiplyScalar(Rin), p1i=n1.clone().multiplyScalar(Rin);
+          positions.push(p0i.x,p0i.y,p0i.z, p1i.x,p1i.y,p1i.z, p1o.x,p1o.y,p1o.z, p0i.x,p0i.y,p0i.z, p1o.x,p1o.y,p1o.z, p0o.x,p0o.y,p0o.z); } };
+        ringsN.forEach(addSide);
+
+        const geom=new THREE.BufferGeometry(); geom.setAttribute('position',new THREE.Float32BufferAttribute(positions,3)); geom.computeVertexNormals();
+        const mesh=new THREE.Mesh(geom,mat); mesh.renderOrder=HIGHLIGHT_RENDER_ORDER; highlightGroup.add(mesh); activeHighlight.push(mesh);
+      };
+
+      if(g.type==='Polygon') build(g.coordinates); else if(g.type==='MultiPolygon') g.coordinates.forEach(poly=>build(poly));
+
+      const edgePos=[]; const addEdges=(rings)=>{ rings.forEach(r=>{ for(let i=0;i<r.length-1;i++){ const[lon1,lat1]=r[i],[lon2,lat2]=r[i+1]; const v1=lonLatToVec3(lon1,lat1,Rout+.001), v2=lonLatToVec3(lon2,lat2,Rout+.001); edgePos.push(v1.x,v1.y,v1.z,v2.x,v2.y,v2.z);} });};
+      if(g.type==='Polygon') addEdges(g.coordinates); else if(g.type==='MultiPolygon') g.coordinates.forEach(poly=>addEdges(poly));
+      const eg=new THREE.BufferGeometry(); eg.setAttribute('position',new THREE.Float32BufferAttribute(edgePos,3));
+      const edges=new THREE.LineSegments(eg,new THREE.LineBasicMaterial({color:new THREE.Color(color).offsetHSL(0,0,-.25),transparent:true,opacity:1,depthTest:true,depthWrite:false}));
+      edges.renderOrder=HIGHLIGHT_RENDER_ORDER+1; highlightGroup.add(edges); activeHighlight.push(edges);
+    }
+    function animateSolid(){
+      const start={s:0}, end={s:1}; highlightGroup.scale.set(.001,.001,.001);
+      highlightTween=new TWEEN.Tween(start).to(end,800).easing(TWEEN.Easing.Elastic.Out).onUpdate(o=>{
+        const k=0.98+0.02*Math.sin(performance.now()*0.008); const s=THREE.MathUtils.lerp(.001,1,o.s)*k; highlightGroup.scale.set(s,s,s);
+      }).start();
+    }
+
+    /* 카메라 이동 */
+    let autoRotate=false, zoomMode='normal';
+	
+    function goToCountry(feature,duration=1500){
+		if(!feature?.geometry) return;
+		const [lon,lat]=featureCentroid(feature.geometry); 
+		const newTarget=lonLatToVec3(lon,lat,0);
+		const zoom=(zoomMode==='close')? (controls.minDistance+controls.maxDistance)/2 : 6;
+		const newPos=lonLatToVec3(lon,lat,zoom);
+		new TWEEN.Tween(controls.target).to(newTarget,duration).easing(TWEEN.Easing.Quadratic.InOut).start();
+		new TWEEN.Tween(camera.position).to(newPos,duration).easing(TWEEN.Easing.Quadratic.InOut)
+			.onUpdate(()=>controls.update()).onStart(()=>{controls.enabled=false; autoRotate=false;}).onComplete(()=>{controls.enabled=true;}).start();
+    }
+
+    /* 클릭 */
+    const raycaster=new THREE.Raycaster(); const mouse=new THREE.Vector2();
+    function onMouseClick(e){
+		if (!document.getElementById('quiz').hidden) return; // 퀴즈 중이면 무시
+		const rect=renderer.domElement.getBoundingClientRect(); 
+		mouse.x=((e.clientX-rect.left)/rect.width)*2-1; 
+		mouse.y=-((e.clientY-rect.top)/rect.height)*2+1;
+		raycaster.setFromCamera(mouse,camera);
+		const pickHits=raycaster.intersectObjects(pickGroup.children,true);
+		if(pickHits.length>0){
+			const hit=pickHits[0].object; 
+			const feat=hit.userData.countryFeature; 
+			const color=hit.userData.originalColor||0xffff00;
+			let spr=null; 
+			for(const ch of labelsGroup.children){ 
+				if(ch.isSprite && ch.userData?.countryFeature===feat){ 
+					spr=ch; break; 
+					} 
+			}
+        highlightCountry(feat, new THREE.Color(color), spr); 
+		logLine('🖱️ 국가 영역 클릭'); return; 
+		}
+		const labelHits=raycaster.intersectObjects(labelsGroup.children,true);
+		if(labelHits.length>0){ 
+			const spr=labelHits[0].object; 
+			const feat=spr.userData.countryFeature; 
+			const color=spr.userData.originalColor; 
+			if(feat&&color){ 
+				logLine(`🖱️ 라벨 클릭: ${feat.properties.name||feat.properties.ADMIN}`); 
+				highlightCountry(feat,new THREE.Color(color),spr); return; 
+			} 
+		}
+		highlightCountry(null); logLine('🖱️ 배경 클릭 → 해제');
+    }
+	
+	const canvasEl = renderer.domElement;
+	canvasEl.addEventListener('click', onMouseClick);
+	canvasEl.addEventListener('touchend', (e) => {
+		if(e.changedTouches && e.changedTouches[0]){
+			const t = e.changedTouches[0];
+			onMouseClick({ clientX: t.clientX, clientY: t.clientY });
+		}
+	});
+    /* ===== 자동플레이 ===== */
+    let autoplayRunning=false, autoplayTimers=[], autoplayTweens=[];let lastCountryIndex = -1;let currentCountryIndex = -1;
+
+    function stopAutoplay() {
+		autoplayRunning = false;
+		autoplayTimers.forEach(id => clearTimeout(id));
+		autoplayTimers = [];
+		autoplayTweens.forEach(t => t.stop?.());
+		autoplayTweens = [];
+		$countryInfo.classList.remove('visible');
+		lastCountryIndex = currentCountryIndex;
+		document.getElementById('autoPlayContinueBtn').style.display = 'inline-block';
+		logLine('⏸️ 자동플레이 멈춤');
+    }
+	
+    function queueTimeout(fn, ms){ const id=setTimeout(fn,ms); autoplayTimers.push(id); return id; }
+    
+	function trackTween(t){ autoplayTweens.push(t); return t; }
+
+    function hideAllLabels(){
+		labelsGroup.children.forEach(ch=>{
+			if(ch.isSprite){ ch.material.transparent=true; ch.material.opacity=0; }
+			if(ch.isMesh){ ch.material.transparent=true; ch.material.opacity=0; }
+		});
+    }
+	
+    function showLabelWithDrop(spr, marker, lon, lat){
+		const startR=EARTH_RADIUS+0.18, finalR=EARTH_RADIUS+0.36;
+		const posStart=lonLatToVec3(lon,lat,startR), posEnd=lonLatToVec3(lon,lat,finalR);
+		spr.position.copy(posStart); 
+		spr.material.opacity=0;
+		if(marker){ 
+			marker.position.copy(posStart); 
+			marker.material.opacity=0; 
+		}
+		const o={t:0,o:0};
+		const tw = trackTween(new TWEEN.Tween(o).to({t:1,o:1}, INTRO.labelFallDuration).easing(TWEEN.Easing.Quadratic.Out)
+			.onUpdate(()=>{
+				spr.position.lerpVectors(posStart,posEnd,o.t);
+				if(marker){ 
+					marker.position.copy(spr.position); 
+					marker.material.opacity=.85*o.o; 
+				}
+				spr.material.opacity=o.o;
+			})
+			.onComplete(()=>{ 
+				if(INTRO.labelBounce>0){ 
+					const bumpStart=spr.position.clone(), bumpEnd=lonLatToVec3(lon,lat, finalR + INTRO.labelBounce*(finalR-EARTH_RADIUS)); 
+					const b={v:0};
+					trackTween(new TWEEN.Tween(b).to({v:1},220).easing(TWEEN.Easing.Quadratic.Out).yoyo(true).repeat(1)
+						.onUpdate(()=>{ 
+							spr.position.lerpVectors(bumpStart,bumpEnd,b.v); 
+							if(marker){ 
+								marker.position.copy(spr.position); 
+							} 
+						})).start();
+				}
+			})
+		);
+		tw.start();
+    }
+
+    function startAutoplay(startIndex = 0) {
+		stopAutoplay();
+		autoplayRunning = true;
+		$tourModal.style.display = 'none';
+		hideAllLabels();
+
+		const sprites = labelsGroup.children.filter(ch => ch.isSprite)
+			.sort((a, b) => Number(b.userData.countryFeature?.id || 0) - Number(a.userData.countryFeature?.id || 0));
+
+		const CAM_MOVE_DURATION = 1500;
+		const HOLD_DURATION = 3000;
+
+		logLine('▶️ 자동플레이 시작');
+		document.getElementById('autoPlayContinueBtn').style.display = 'none';
+
+		function visitNextCountry(index) {
+			if (!autoplayRunning) return;
+
+			if (index >= sprites.length) {
+				autoplayRunning = false;
+				lastCountryIndex = -1;
+				currentCountryIndex = -1;
+				$tourModal.style.display = 'flex';
+				logLine('🛬 월드투어 종료');
+				queueTimeout(() => { $tourModal.style.display = 'none'; }, 3000);
+				return;
+			}
+
+			currentCountryIndex = index;
+			const spr = sprites[index];
+			const feat = spr.userData.countryFeature;
+			const [lon, lat] = featureCentroid(feat.geometry);
+			const marker = spr.userData.marker || null;
+
+			goToCountry(feat, CAM_MOVE_DURATION);
+
+			queueTimeout(() => {
+				if (!autoplayRunning) return;
+				const color = spr.userData.originalColor || 0xffff00;
+				showLabelWithDrop(spr, marker, lon, lat);
+				highlightCountry(feat, new THREE.Color(color), spr);
+
+				queueTimeout(() => {
+					if (!autoplayRunning) return;
+					$countryInfo.classList.remove('visible');
+					clearHighlight();
+					visitNextCountry(index + 1);
+				}, HOLD_DURATION);
+			}, CAM_MOVE_DURATION);
+		}
+
+    visitNextCountry(startIndex);
+    }
+
+    /* ====== 퀴즈 로직 (서버 없음) ====== */
+    let featureIndex = new Map(); // ccn3 -> feature
+    let quizPool = [];            // REST Countries 객체들
+    let quizScore = 0;            // 정답 수
+    let quizCurrent = null;       // 현재 문제
+
+    async function prepareQuizPool(){
+		// REST Countries 전체(필요 필드만)
+		const url = 'https://restcountries.com/v3.1/all?fields=name,cca3,ccn3,capital,flags,region';
+		const res = await fetch(url);
+		const all = await res.json();
+		quizPool = all.filter(c => {
+			const id = zeroPad3(c.ccn3 || '');
+			return !!(c.capital && c.capital[0] && (c.flags?.png || c.flags?.svg) && featureIndex.has(id));
+		});
+		//  document.getElementById('scoreBadge').style.display = 'block';
+		updateScoreBadge();
+		logLine(`✅ 퀴즈 풀 준비 완료: ${quizPool.length}개 국가`);
+    }
+
+    function updateScoreBadge(){
+      document.getElementById('scoreBadge').textContent = `정답 ${quizScore}`;
+    }
+
+    function buildQuestion(){
+		if(!quizPool.length) return null;
+		const pick = () => quizPool[(Math.random()*quizPool.length)|0];
+		const correct = pick();
+		const usedIds = new Set([correct.ccn3]);
+		const usedCaps = new Set([correct.capital?.[0]]);
+		const distractors = [];
+		let guard = 0;
+		while(distractors.length < 3 && guard++ < 500){
+			const c = pick();
+			const cap = c.capital?.[0];
+			if(!cap) continue;
+			if(usedIds.has(c.ccn3) || usedCaps.has(cap)) continue;
+			usedIds.add(c.ccn3); usedCaps.add(cap); distractors.push(c);
+		}
+		const options = shuffle([correct, ...distractors]).map(c => ({ label: c.capital[0], country: c }));
+		const answerIndex = options.findIndex(o => o.country === correct);
+		return { correct, options, answerIndex, flag: correct.flags.png || correct.flags.svg, title: `${correct.name.common}의 수도는?` };
+    }
+
+    function showQuestion(q){
+		isQuizActive = true;                 // (이미 있다면 유지)
+		setScoreBadgeVisible(true);          // [추가] 퀴즈 동안만 표시
+		$countryInfo.classList.remove('visible');
+		scrimEl.hidden = false;
+		quizCurrent = q;
+		const elQuiz = document.getElementById('quiz');
+		elQuiz.hidden = false;
+		const flag = document.getElementById('qFlag');
+		flag.src = q.flag; 
+		flag.alt = `${q.correct.name.common}의 국기`;
+		document.getElementById('qTitle').textContent = q.title;
+		const btns = Array.from(document.querySelectorAll('#quiz .q-choices .btn'));
+		btns.forEach((btn, i) => {
+			btn.textContent = q.options[i].label; 
+			btn.disabled = false; 
+			btn.classList.remove('correct','wrong'); 
+			btn.onclick = () => onChoice(i); 
+		});
+		const next = document.getElementById('qNext');
+		next.disabled = true; 
+		next.onclick = () => { 
+			const nq = buildQuestion(); 
+			if(nq) showQuestion(nq); 
+		};
+    }
+
+    function onChoice(i){
+      if(!quizCurrent) return;
+  const { options, answerIndex, correct } = quizCurrent;
+
+  // 채점 UI
+  const btns = Array.from(document.querySelectorAll('#quiz .q-choices .btn'));
+  btns.forEach((b, idx) => {
+    b.disabled = true;
+    if (idx === answerIndex) b.classList.add('correct');
+  });
+  const isRight = (i === answerIndex);
+  if (!isRight) btns[i].classList.add('wrong');
+  else { quizScore += 1; updateScoreBadge(); }
+
+  // 정답 국가로 이동
+  const correctFeat = featureIndex.get(zeroPad3(correct.ccn3));
+  if (correctFeat) {
+    if (!isRight) {
+      // 오답: 하이라이트 + 팝업까지 띄움
+      lastInfoRequestId++;                  // 지연된 REST 응답 무효화
+      highlightCountry(correctFeat, 0x7ed957);
+    } else {
+      // 정답: 이동만
+      goToCountry(correctFeat, 1500);
+	  highlightCountry(correctFeat, 0x7ed957);
+    }
+  }
+
+  document.getElementById('qNext').disabled = false;
+}
+
+    function shuffle(a){ const arr=a.slice(); for(let i=arr.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
+
+    /* 초기화/세팅 */
+    function setupUI() {
+    const autoRotateToggle = document.getElementById('autoRotateToggle');
+    const labelsToggle = document.getElementById('labelsToggle');
+    const borderToggle = document.getElementById('borderToggle');
+    const zoomToggle = document.getElementById('zoomToggle');
+    const cloudToggle = document.getElementById('cloudToggle');
+    const labelScaleSlider = document.getElementById('labelScaleSlider');
+    const minDistSlider = document.getElementById('minDistSlider');
+    const maxDistSlider = document.getElementById('maxDistSlider');
+    const resetViewBtn = document.getElementById('resetView');
+    const autoPlayBtn = document.getElementById('autoPlayBtn');
+    const autoPlayStopBtn = document.getElementById('autoPlayStopBtn');
+    const autoPlayContinueBtn = document.getElementById('autoPlayContinueBtn');
+    const tourReplay = document.getElementById('tourReplay');
+    const tourReset = document.getElementById('tourReset');
+    const uiContainer = document.getElementById('ui');
+    const quizStartBtn = document.getElementById('quizStartBtn');
+	
+	// [추가] 더보기 토글
+	const moreBtn = document.getElementById('moreBtn');
+	
+	moreBtn?.addEventListener('click', () => {
+		const exp = uiContainer.classList.toggle('expanded');
+		moreBtn.textContent = exp ? '접기' : '더보기';
+		moreBtn.setAttribute('aria-expanded', String(exp));
+		// UI 높이 재계산(안전빵) → 하단 퀴즈 카드 위치 보정에 쓰는 --uiH 갱신
+		window.dispatchEvent(new Event('resize'));
+	});
+  
+    uiContainer.addEventListener('pointerdown', (event) => { event.stopPropagation(); });
+    autoRotateToggle.addEventListener('change', e => { autoRotate = e.target.checked; logLine(`자동 회전: ${autoRotate ? 'ON' : 'OFF'}`); });
+    cloudToggle.addEventListener('change', e => { cloudVisibleDesired = e.target.checked; if(clouds){ clouds.visible = cloudVisibleDesired; } logLine(`구름: ${cloudVisibleDesired ? 'ON' : 'OFF'}`); });
+    labelsToggle.addEventListener('change', e => { labelsGroup.visible = e.target.checked; logLine(`나라 라벨: ${labelsGroup.visible ? 'ON' : 'OFF'}`); });
+    borderToggle.addEventListener('change', e => { borderGroup.visible = e.target.checked; logLine(`경계선: ${borderGroup.visible ? 'ON' : 'OFF'}`); });
+    zoomToggle.addEventListener('change', e => { zoomMode = e.target.checked ? 'close' : 'normal'; logLine(`줌 모드 변경: ${zoomMode}`); });
+    labelScaleSlider.addEventListener('input', e => updateLabelScale(e.target.value));
+    minDistSlider.addEventListener('input', e => { controls.minDistance = parseFloat(e.target.value); logLine(`최소거리 변경: ${controls.minDistance.toFixed(1)}`); });
+    maxDistSlider.addEventListener('input', e => { controls.maxDistance = parseFloat(e.target.value); logLine(`최대거리 변경: ${controls.maxDistance.toFixed(1)}`); });
+
+    resetViewBtn.addEventListener('click', () => { window.location.reload(); });
+
+    autoPlayBtn.addEventListener('click', () => {        lastCountryIndex = -1;        autoPlayContinueBtn.style.display = 'none';        startAutoplay();      });
+    autoPlayStopBtn.addEventListener('click', () => stopAutoplay());
+    autoPlayContinueBtn.addEventListener('click', () => { if (lastCountryIndex !== -1) { startAutoplay(lastCountryIndex); logLine('▶️ 이어보기 시작'); } else { logLine('❌ 이어보기 실패: 저장된 국가가 없습니다. 자동플레이를 다시 시작하세요.'); }  });
+	document.getElementById('qClose').addEventListener('click', endQuiz);
+    quizStartBtn.addEventListener('click', async () => {
+		// ① 진행 중인 REST 응답 무효화(경합 방지)
+		lastInfoRequestId++;
+
+		// ② 나라정보 팝업/하이라이트 해제
+		$countryInfo.classList.remove('visible');
+		clearHighlight();
+
+		// ③ (선택) 자동플레이 중이면 중단
+		if (typeof autoplayRunning !== 'undefined' && autoplayRunning) stopAutoplay();
+
+		// ④ 퀴즈 풀 준비 보장 후 시작
+		if (quizPool.length < 4) { await prepareQuizPool(); }
+			const q = buildQuestion();
+			if (q) showQuestion(q);
+		});
+		tourReplay.addEventListener('click', () => { $tourModal.style.display = 'none'; startAutoplay(); });
+		tourReset.addEventListener('click', () => { $tourModal.style.display = 'none'; window.location.reload(); });
+		autoRotateToggle.checked = autoRotate;
+		labelsToggle.checked = labelsGroup.visible;
+		borderToggle.checked = borderGroup.visible;
+		zoomToggle.checked = (zoomMode === 'close');
+		cloudToggle.checked = (clouds?.visible ?? cloudVisibleDesired);
+		labelScaleSlider.value = labelScale;
+		minDistSlider.value = controls.minDistance;
+		maxDistSlider.value = controls.maxDistance;
+
+		logLine('🎛️ UI 준비 완료');
+    }
+
+    /* 라벨 가시성(뒷면 숨김) + 렌더 루프 */
+    function updateLabelVisibility(){
+		globe.getWorldPosition(globeCenter); const g2c=camera.position.clone().sub(globeCenter);
+		labelsGroup.children.forEach(ch=>{
+			if(ch===attachedLabel){ ch.visible=true; return; }
+			if(!ch.isSprite && !(ch.isMesh && ch.geometry?.type==='SphereGeometry')) return;
+			ch.getWorldPosition(tmpVec3); const g2l=tmpVec3.sub(globeCenter); ch.visible=g2l.dot(g2c)>0;
+		});
+    }
+	
+    function startAnimation(){
+		(function tick(){
+			requestAnimationFrame(tick);
+			if(autoRotate) globe.rotation.y+=0.002;
+			if(clouds) clouds.rotation.y += 0.0005; // 구름은 살짝 느리게
+			controls.update();
+			TWEEN.update();
+			updateLabelVisibility();
+			renderer.render(scene,camera);
+		})();
+		logLine('🎬 애니메이션 시작');
+    }
+
+    /* 지구 확대 인트로 + 라벨 낙하 후 경계선 표시 */
+    function runIntro(onComplete){
+		if(introRan) { onComplete?.(); return; }
+		introRan = true;
+		borderGroup.visible = false;
+		const startScale=0.001; earth.scale.set(startScale,startScale,startScale); if(atmosphere) atmosphere.scale.set(startScale,startScale,startScale);
+		new TWEEN.Tween({s:startScale})
+			.to({s:1}, INTRO.globeDuration)
+			.easing(TWEEN.Easing.Back.Out)
+			.onUpdate(o=>{ earth.scale.set(o.s,o.s,o.s); if(atmosphere) atmosphere.scale.set(o.s,o.s,o.s); })
+			.onComplete(()=>{
+			  addCountryLabels(countryData,{animate:true});
+			  setTimeout(()=>{ borderGroup.visible = true; $status.style.display='none'; }, INTRO.totalLabelWindow);
+			  onComplete?.();
+			}).start();
+	}
+
+    /* 하이라이트 + REST 팝업 */
+    async function highlightCountry(feature, color=0xffff00, labelSprite=null){
+		clearHighlight(); if(!feature?.geometry){ logLine('ℹ️ 하이라이트 해제'); return; }
+		setAtmosphereColor(color); goToCountry(feature);
+		if(labelSprite){
+			attachedLabelPrevParent = labelSprite.parent || labelsGroup;
+			reparentKeepWorld(labelSprite, highlightGroup);
+			labelSprite.position.normalize().multiplyScalar(EARTH_RADIUS+.38);
+			labelSprite.renderOrder=HIGHLIGHT_RENDER_ORDER+2; attachedLabel=labelSprite;
+		}
+		buildSphericalSolid(feature, color, .3, .06); animateSolid();
+
+		const props=feature.properties||{}; const [lon,lat]=featureCentroid(feature.geometry);
+		$countryInfo.innerHTML = `<h3>${props.name || props.ADMIN || '알 수 없음'}</h3><p><span>수도</span><span>불러오는 중…</span></p>`; $countryInfo.classList.add('visible');
+		const reqId=++lastInfoRequestId; const ccn3=zeroPad3(feature.id); const rest=await fetchCountryInfoById(ccn3); if(reqId!==lastInfoRequestId) return;
+		$countryInfo.innerHTML = makeCountryInfoHTML(props, lon, lat, rest);
+		logLine(`✨ '${props.name || props.ADMIN || '국가'}' (ccn3:${ccn3}) 하이라이트 + REST`);
+    }
+
+    /* 전체 초기화 */
+    function fullReset(){
+		stopAutoplay();
+		clearHighlight();
+		$countryInfo.classList.remove('visible');
+
+		autoRotate = false;
+		zoomMode = 'normal';
+		controls.enabled = true;
+		controls.minDistance = 3.2;
+		controls.maxDistance = 20;
+		controls.target.set(0,0,0);
+		controls.update();
+		camera.position.set(0,0,9);
+		globe.rotation.set(0,0,0);
+		setAtmosphereColor(0x3c4de6);
+
+		clearGroup(labelsGroup);
+		clearGroup(pickGroup);
+		clearGroup(borderGroup);
+		addCountryLabels(countryData, { animate:false });
+		addCountryPickMeshes(countryData);
+		addCountryBorders(countryData);
+		borderGroup.visible = false;
+
+		document.getElementById('autoRotateToggle').checked = false;
+		document.getElementById('zoomToggle').checked = false;
+		document.getElementById('labelsToggle').checked = true;
+		document.getElementById('borderToggle').checked = false;
+		document.getElementById('labelScaleSlider').value = labelScale;
+		document.getElementById('minDistSlider').value = controls.minDistance;
+		document.getElementById('maxDistSlider').value = controls.maxDistance;
+
+		introRan = false;
+		$status.style.display='';
+		$status.innerHTML = `
+			<div class="loading-indicator">
+				<div class="spinner"></div>
+				로딩 중…
+			</div>`;
+		runIntro(()=>{ $status.style.display='none'; });
+
+		logLine('🔄 전체 초기화 완료');
+    }
+
+    /* 초기화 */
+    async function initializeGlobe(){
+		try{
+			const topoUrl='https://cdn.jsdelivr.net/npm/world-atlas@2/countries-10m.json';
+			logLine('📡 지도 데이터 로드 중...', topoUrl);
+			const res=await fetch(topoUrl); if(!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+			const topo=await res.json(); logLine('✅ TopoJSON 로드 완료');
+			if(!window.topojson||typeof topojson.feature!=='function') throw new Error('topojson-client 로드 실패');
+			const countries=topojson.feature(topo, topo.objects.countries); logLine(`✅ 국가 데이터 변환: ${countries.features.length}개`);
+			countryData=countries.features;
+			featureIndex = new Map(countryData.map(f => [zeroPad3(f.id), f]));
+
+			// 지구 텍스처
+			const loader = new THREE.TextureLoader();
+			loader.load(
+				'https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg',
+				function(texture) {
+					earth.material.map = texture;
+					earth.material.needsUpdate = true;
+					logLine('✅ 실사 지구 텍스처 로드 및 적용 완료');
+				}, undefined, function(err) { logLine('❌ 실사 지구 텍스처 로드 실패', err); }
+			);
+
+        // Clouds layer (위키백과 구름 텍스처)
+			loader.load(
+				'https://upload.wikimedia.org/wikipedia/commons/d/df/Earth-clouds.png',
+				function(tex) {
+					tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+					tex.anisotropy = renderer.capabilities.getMaxAnisotropy?.() || 1;
+					const cloudMat = new THREE.MeshPhongMaterial({
+						map: tex,
+						transparent: true,
+						opacity: 0.8,
+						depthWrite: false // 경계선 가림 방지
+					});
+					const cloudGeo = new THREE.SphereGeometry(EARTH_RADIUS + 0.02, 64, 64);
+					clouds = new THREE.Mesh(cloudGeo, cloudMat);
+					clouds.renderOrder = 1; // 경계선(2)보다 먼저
+					clouds.visible = cloudVisibleDesired;
+					globe.add(clouds);
+					logLine('☁️ 구름 텍스처 적용 완료');
+				}, undefined, function(err) { logLine('❌ 구름 텍스처 로드 실패', err); }
+			);
+
+			const atmosphereGeometry=new THREE.SphereGeometry(ATMOSPHERE_RADIUS,64,64);
+			const atmosphereMaterial=new THREE.ShaderMaterial({ uniforms:{glowColor:{value:new THREE.Color(0x7ed957)}},
+			vertexShader:document.getElementById('vertexShaderAtmosphere').textContent,
+			fragmentShader:document.getElementById('fragmentShaderAtmosphere').textContent,
+			side:THREE.BackSide, blending:THREE.AdditiveBlending, transparent:true });
+			atmosphere=new THREE.Mesh(atmosphereGeometry,atmosphereMaterial); scene.add(atmosphere);
+
+			// 레이어 생성 (경계선은 초기 감춤)
+			addCountryLabels(countryData,{animate:false});
+			addCountryPickMeshes(countryData);
+			addCountryBorders(countryData);
+			borderGroup.visible=false;
+
+			startAnimation();
+			setupUI();
+			runIntro();
+
+			$status.innerHTML='🌍 준비 완료';
+			document.getElementById('ui').style.display='flex';
+			logLine('🎉 초기화 완료!');
+
+			// 퀴즈 풀 준비
+			await prepareQuizPool();
+		}catch(err){
+			const msg='초기화 실패: '+(err.message||err); $status.innerHTML='❌ '+msg; logLine('❌', msg);
+		}
+    }
+	logLine('🚀 시스템 부팅...');
+    initializeGlobe();
+  </script>
+</body>
+</html>
