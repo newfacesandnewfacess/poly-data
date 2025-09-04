@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
-<title>방수판(1500×1200, 노치 400×400) · r147 UMD · 아이템제작(툴팁 포함)</title>
+<title>방수판(1500×1200, 노치 400×400) · r147 UMD · 아이템제작(툴팁 포함) · Optimized</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   html,body{height:100%;margin:0;background:#0b1220;color:#e9eef6;
@@ -25,99 +25,57 @@
 
   /* ===== 아이템 제작 모달 ===== */
   .modal.hidden { display: none }
-  .modal {
-    position: fixed; inset: 0; z-index: 9999;
-    background: rgba(0,0,0,.45); backdrop-filter: blur(4px);
-    display:flex; align-items:center; justify-content:center;
-  }
-  .modal .window{
-    width:95vw; height:95vh; border-radius:16px;
-    background:#0f1424; color:#e9eef6; border:1px solid rgba(255,255,255,.12);
-    display:flex; flex-direction:column; overflow:hidden;
-    box-shadow: 0 20px 60px rgba(0,0,0,.5);
-  }
-  .m-header{
-    display:flex; align-items:center; justify-content:space-between; gap:8px;
-    padding:10px 14px; border-bottom:1px solid rgba(255,255,255,.12);
-    background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,0));
-  }
+  .modal { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,.45); backdrop-filter: blur(4px);
+           display:flex; align-items:center; justify-content:center; }
+  .modal .window{ width:95vw; height:95vh; border-radius:16px; background:#0f1424; color:#e9eef6;
+                  border:1px solid rgba(255,255,255,.12); display:flex; flex-direction:column; overflow:hidden;
+                  box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  .m-header{ display:flex; align-items:center; justify-content:space-between; gap:8px;
+             padding:10px 14px; border-bottom:1px solid rgba(255,255,255,.12);
+             background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,0)); }
   .m-title{ font-weight:600 }
-  .m-close{
-    background:transparent; color:#fff; border:1px solid rgba(255,255,255,.25);
-    padding:6px 10px; border-radius:10px; cursor:pointer;
-  }
+  .m-close{ background:transparent; color:#fff; border:1px solid rgba(255,255,255,.25);
+            padding:6px 10px; border-radius:10px; cursor:pointer; }
   .m-close:hover{ background:rgba(255,255,255,.08) }
 
-  /* 본문: 롤(시트지) 영역 */
   .m-body{ flex:1; display:flex; align-items:stretch; position:relative }
   .rollArea{ flex:1; display:flex; align-items:flex-end; justify-content:center; overflow:hidden; position:relative }
-  .rollGrid{
-    position:relative; width:100%; height:100%; overflow:hidden;
-    display:flex; align-items:flex-end; justify-content:center;
-    background:
+  .rollGrid{ position:relative; width:100%; height:100%; overflow:hidden; display:flex; align-items:flex-end; justify-content:center;
+             background:
       repeating-linear-gradient(0deg, rgba(255,255,255,.08) 0, rgba(255,255,255,.08) 1px, transparent 1px, transparent var(--grid, 100px)),
-      repeating-linear-gradient(90deg, rgba(255,255,255,.08) 0, rgba(255,255,255,.08) 1px, transparent 1px, transparent var(--grid, 100px));
-  }
-  .rollSheet{
-    position:absolute; bottom:0; left:50%; transform:translateX(-50%);
-    width:600px; height:0px;
-    background:rgba(255,255,255,0.9);
-    outline:1px solid rgba(255,0,0,.7);
-  }
-  .dragHandle{
-    position:absolute; bottom:0; left:50%; transform:translateX(-50%);
-    width:280px; text-align:center; padding:8px 10px; margin-bottom:6px;
-    background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.25); border-radius:12px;
-    cursor:ns-resize; user-select:none; font-size:13px;
-  }
-  .lengthIndicator{
-    position:absolute; right:10px; bottom:10px;
-    background:rgba(0,0,0,.65); border:1px solid rgba(255,255,255,.25);
-    padding:8px 10px; border-radius:10px; font-weight:600; min-width:120px; text-align:right;
-  }
+      repeating-linear-gradient(90deg, rgba(255,255,255,.08) 0, rgba(255,255,255,.08) 1px, transparent 1px, transparent var(--grid, 100px)); }
+  .rollSheet{ position:absolute; bottom:0; left:50%; transform:translateX(-50%);
+              width:600px; height:0px; background:rgba(255,255,255,0.9); outline:1px solid rgba(255,0,0,.7); }
+  .dragHandle{ position:absolute; bottom:0; left:50%; transform:translateX(-50%);
+               width:280px; text-align:center; padding:8px 10px; margin-bottom:6px;
+               background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.25); border-radius:12px;
+               cursor:ns-resize; user-select:none; font-size:13px; }
+  .lengthIndicator{ position:absolute; right:10px; bottom:10px; background:rgba(0,0,0,.65);
+                    border:1px solid rgba(255,255,255,.25); padding:8px 10px; border-radius:10px; font-weight:600; min-width:120px; text-align:right; }
 
-  /* 절단 조각 레이어 & 조각들 */
-  .cutLayer{
-    position:absolute; bottom:0; left:50%; transform:translateX(-50%);
-    width:600px; height:0; pointer-events:none;
-  }
-  .cutPiece{
-    position:absolute; background:rgba(255,200,0,.9);
-    box-shadow:inset 0 0 0 1px rgba(0,0,0,.35);
-    border-radius:6px; transition:width .35s ease,height .35s ease, opacity .3s ease;
-  }
+  .cutLayer{ position:absolute; bottom:0; left:50%; transform:translateX(-50%);
+             width:600px; height:0; pointer-events:none; }
+  .cutPiece{ position:absolute; background:rgba(255,200,0,.9); box-shadow:inset 0 0 0 1px rgba(0,0,0,.35);
+             border-radius:6px; transition:width .35s ease,height .35s ease, opacity .3s ease; }
   .cutPiece.shrink{ width:1px !important; height:1px !important; opacity:0; }
-  .cutPiece .num{
-    position:absolute; right:6px; bottom:6px; font-weight:700; font-size:12px;
-    background:#111; color:#ffd54d; padding:2px 6px; border-radius:6px;
-  }
+  .cutPiece .num{ position:absolute; right:6px; bottom:6px; font-weight:700; font-size:12px; background:#111; color:#ffd54d; padding:2px 6px; border-radius:6px; }
 
-  /* 모달 내부에서 바디로 스크롤 전파 방지 */
   #makerModal, #makerModal * { overscroll-behavior: contain; }
   .rollGrid, .dragHandle { touch-action: none; }
-  /* 굵은 가로 가이드 라인(롤과 함께 위로 이동) */
-  .guide-line{
-    position:absolute;
-    left:50%; transform:translateX(-50%);
-    height:0;
-    border-top:5px solid #f00;
-    opacity:.95;
-    pointer-events:none;
-  }
+
+  .guide-line{ position:absolute; left:50%; transform:translateX(-50%); height:0; border-top:5px solid #f00; opacity:.95; pointer-events:none; }
 
   /* ====== 단계 상세 툴팁 ====== */
-  .tip{ position:fixed; z-index:12; min-width:280px; max-width:360px;
-        background:rgba(12,18,32,.96); border:1px solid rgba(255,255,255,.14);
-        border-radius:14px; box-shadow:0 12px 40px rgba(0,0,0,.45);
+  .tip{ position:fixed; z-index:12; min-width:280px; max-width:360px; background:rgba(12,18,32,.96);
+        border:1px solid rgba(255,255,255,.14); border-radius:14px; box-shadow:0 12px 40px rgba(0,0,0,.45);
         color:#e9eef6; overflow:hidden; pointer-events:auto; }
   .tip.hidden{ display:none }
-  .tip-header{ display:flex; align-items:center; justify-content:space-between; gap:8px;
-               padding:8px 10px; font-weight:600; border-bottom:1px solid rgba(255,255,255,.12) }
+  .tip-header{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; font-weight:600;
+               border-bottom:1px solid rgba(255,255,255,.12) }
   .tip-body{ padding:10px }
   .tip-body img{ width:100%; height:auto; border-radius:10px; display:block; margin:0 0 8px 0;
                  background:linear-gradient(135deg,#1a2238,#0f1628) }
-  .tip-close{ background:transparent; color:#fff; border:1px solid rgba(255,255,255,.25);
-              padding:4px 8px; border-radius:8px; cursor:pointer; }
+  .tip-close{ background:transparent; color:#fff; border:1px solid rgba(255,255,255,.25); padding:4px 8px; border-radius:8px; cursor:pointer; }
   .tip-close:hover{ background:rgba(255,255,255,.08) }
 </style>
 </head>
@@ -128,7 +86,6 @@
 <div id="ui">
   <button id="toggleDims">치수: ON</button>
   <button id="toggleMarks">마킹영역: ON</button>
-  <button id="toggleCoords">좌표: OFF</button>
   <button id="toggleMaker">재단 보기</button>
 
   <!-- 작업순서: 자동플레이(시작/중지) -->
@@ -197,8 +154,8 @@ controls.mouseButtons = { LEFT:THREE.MOUSE.PAN, MIDDLE:THREE.MOUSE.DOLLY, RIGHT:
 controls.touches      = { ONE:THREE.TOUCH.PAN, TWO:THREE.TOUCH.DOLLY_ROTATE };
 
 scene.add(new THREE.HemisphereLight(0xffffff,0x223344,0.85));
-scene.add(new THREE.AxesHelper(200));
-const grid = new THREE.GridHelper(4000, 40, 0x3355ff, 0x223355);
+scene.add(new THREE.AxesHelper(120));
+const grid = new THREE.GridHelper(4000, 24, 0x3355ff, 0x223355);
 grid.material.opacity = 0.25; grid.material.transparent = true;
 scene.add(grid);
 
@@ -252,7 +209,6 @@ function makeLabel(pos,text,cls='label'){
   const lab=new THREE.CSS2DObject(el); lab.position.copy(pos); return lab;
 }
 const dimsGroup = new THREE.Group(); scene.add(dimsGroup);
-const coordGroup = new THREE.Group(); scene.add(coordGroup);
 const markGroup = new THREE.Group(); scene.add(markGroup);
 
 /* 작업순서 전용 그룹 */
@@ -282,7 +238,7 @@ function addTickAt(p,dir,len=20){
   dimsGroup.add(new THREE.Line(g,new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.95})));
 }
 
-/* 벽/면목/기둥 */
+/* 벽/면목/기둥 (좌표 라벨 제거하여 경량화) */
 function addVerticalBoard(p1, p2, name1, name2, H = WALL_H, t = WALL_T, place = 'outset') {
   const dir = p2.clone().sub(p1); dir.y = 0;
   const L   = Math.max(0.0001, Math.hypot(dir.x, dir.z));
@@ -301,11 +257,6 @@ function addVerticalBoard(p1, p2, name1, name2, H = WALL_H, t = WALL_T, place = 
     wall.position.add(offsetN.multiplyScalar(t * 0.5));
   }
   scene.add(wall);
-
-  const t1 = p1.clone(); t1.y = Y_TOP + H;
-  const t2 = p2.clone(); t2.y = Y_TOP + H;
-  coordGroup.add(makeLabel(t1.clone().add(new THREE.Vector3(0,20,0)), `${name1}@ (${fmt0(t1.x)},${fmt0(t1.y)},${fmt0(t1.z)})`));
-  coordGroup.add(makeLabel(t2.clone().add(new THREE.Vector3(0,20,0)), `${name2}@ (${fmt0(t2.x)},${fmt0(t2.y)},${fmt0(t2.z)})`));
   return wall;
 }
 function createTriShape(w=TRI_W,h=TRI_H){
@@ -326,21 +277,15 @@ function addTriPrismOnEdge(p1,p2,label='edge',w=TRI_W,h=TRI_H){
   scene.add(mesh);
   return mesh;
 }
-function addAxisAlignedPillar(corners, h = PILLAR_H, label = '') {
+function addAxisAlignedPillar(corners, h = PILLAR_H) {
   const xs = corners.map(p => p.x), zs = corners.map(p => p.z);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minZ = Math.min(...zs), maxZ = Math.max(...zs);
   const Wp = Math.abs(maxX - minX), Dp = Math.abs(maxZ - minZ);
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
-
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(Wp, h, Dp), matPillar);
   mesh.position.set(cx, Y_TOP + h / 2, cz);
   scene.add(mesh);
-  const ty = Y_TOP + h;
-  [[minX, minZ], [maxX, minZ], [maxX, maxZ], [minX, maxZ]].forEach((p, i) => {
-    const v = new THREE.Vector3(p[0], ty, p[1]);
-    coordGroup.add(makeLabel(v.clone().add(new THREE.Vector3(0,20,0)), `${label?label+' ':''}T${i+1} (${fmt0(v.x)},${fmt0(v.y)},${fmt0(v.z)})`));
-  });
   return mesh;
 }
 
@@ -366,7 +311,6 @@ function addHeightDimAt(point,height=300,text='300',offset=100){
   addTickAt(base,tickDir); addTickAt(top,tickDir);
 }
 
-/* 바닥면 & 임의 사각(회전은 addMarkQuad3D가 처리) */
 function addMarkRect(cx,cz,w,d,label='MARK'){
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w,d),
     new THREE.MeshBasicMaterial({ color:0xff0000, transparent:true, opacity:0.22, depthWrite:false }));
@@ -419,7 +363,6 @@ function addMarkRectVerticalZ(z, y1, y2, x1, x2, label='MARK', opts){
   ], label, opts);
 }
 
-/* 두께 치수(예시) */
 function addThicknessDimOnEdgeOutside(p1, p2, thickness=70, text='70', y=Y_TOP+40, gap=35){
   const mid = p1.clone().add(p2).multiplyScalar(0.5);
   const dir = p2.clone().sub(p1); dir.y = 0; dir.normalize();
@@ -462,8 +405,8 @@ addTriPrismOnEdge(V.C,V.G,'GC');
   scene.add(new THREE.Mesh(geo,mat));
 })();
 
-addAxisAlignedPillar([{x:0,y:0,z:-800},{x:-70,y:0,z:-800},{x:-70,y:0,z:-870},{x:0,y:0,z:-870}], 300, '');
-addAxisAlignedPillar([{x:400,y:0,z:-1200},{x:330,y:0,z:-1200},{x:330,y:0,z:-1270},{x:400,y:0,z:-1270}], 300, '');
+addAxisAlignedPillar([{x:0,y:0,z:-800},{x:-70,y:0,z:-800},{x:-70,y:0,z:-870},{x:0,y:0,z:-870}], 300);
+addAxisAlignedPillar([{x:400,y:0,z:-1200},{x:330,y:0,z:-1200},{x:330,y:0,z:-1270},{x:400,y:0,z:-1270}], 300);
 
 addDimToward(V.A,V.B,'1500');
 addDimToward(V.B,V.C,'1200');
@@ -489,13 +432,9 @@ addMarkRect(500, -500, 120, 120, '파이프 500x700');
 function setGroupVisibility(group, on) {
   group.traverse(obj => {
     obj.visible = on;
-    if (obj.isCSS2DObject && obj.element) {
-      obj.element.style.display = on ? '' : 'none';
-    }
+    if (obj.isCSS2DObject && obj.element) obj.element.style.display = on ? '' : 'none';
   });
 }
-setGroupVisibility(coordGroup, false);
-coordGroup.visible = false;
 
 document.getElementById('toggleDims').onclick = () => {
   const next = !dimsGroup.visible;
@@ -508,12 +447,6 @@ document.getElementById('toggleMarks').onclick = () => {
   setGroupVisibility(markGroup, next);
   markGroup.visible = next;
   document.getElementById('toggleMarks').textContent = `마킹영역: ${next ? 'ON' : 'OFF'}`;
-};
-document.getElementById('toggleCoords').onclick = () => {
-  const next = !coordGroup.visible;
-  setGroupVisibility(coordGroup, next);
-  coordGroup.visible = next;
-  document.getElementById('toggleCoords').textContent = `좌표: ${next ? 'ON' : 'OFF'}`;
 };
 
 addEventListener('resize', ()=>{
@@ -581,44 +514,32 @@ const STEP_INFO = {
   14:{ title:'⑭ 600×450 좌측 패널', img:'14.jpg', html:'13번과 헷갈리지 않도록 주의!!' },
   15:{ title:'⑮ 200x500 파이프 마감', img:'15.jpg', html:'용융 및 철선 잊지 말것!' },
 };
-/* 현재 표시중인 툴팁의 월드좌표(따라다니기) */
 const tipState = { world: null };
-
 function showTipForStep(step){
   const info = STEP_INFO[step.id] || {};
   tipTitle.textContent = info.title || (step.label || `단계 ${step.id}`);
   tipImg.src = info.img || PLACEHOLDER_IMG;
   tipHtml.innerHTML = info.html || '이 단계의 상세 설명을 STEP_INFO에 채워 넣으세요.';
   tipEl.classList.remove('hidden');
-
-  // 툴팁을 단계 중심에 따라다니도록 등록
   tipState.world = new THREE.Vector3(step.c[0], step.c[1]+50, step.c[2]);
   updateTipScreenPos();
 }
-function hideTip(){
-  tipEl.classList.add('hidden');
-  tipState.world = null;
-}
-
-/* 월드좌표 → 화면좌표로 변환해 툴팁 위치 갱신 */
+function hideTip(){ tipEl.classList.add('hidden'); tipState.world = null; }
 function updateTipScreenPos(){
   if(!tipState.world) return;
-  const v = tipState.world.clone();
-  v.project(camera);
+  const v = tipState.world.clone(); v.project(camera);
   let x = (v.x * 0.5 + 0.5) * window.innerWidth;
   let y = (-v.y * 0.5 + 0.5) * window.innerHeight;
-
-  // 화면 경계 살짝 안쪽으로 클램프
   const margin = 10;
   x = Math.max(margin, Math.min(window.innerWidth - margin, x));
   y = Math.max(margin, Math.min(window.innerHeight - margin, y));
-
   tipEl.style.left = `${x}px`;
   tipEl.style.top  = `${y}px`;
-  tipEl.style.transform = 'translate(-50%,-110%)'; // 포인트 위쪽에 띄우기
+  tipEl.style.transform = 'translate(-50%,-110%)';
 }
 
-/* 렌더 루프 */
+/* 렌더 루프 (라벨 렌더 최소화) */
+const shouldRender2D = () => (dimsGroup.visible || markGroup.visible);
 (function animate(){
   requestAnimationFrame(animate);
   if (camTween){
@@ -630,12 +551,9 @@ function updateTipScreenPos(){
     controls.target.lerpVectors(start.t, end.t, k);
   }
   controls.update();
-
-  // 툴팁 추적 위치 갱신
   if (!tipEl.classList.contains('hidden')) updateTipScreenPos();
-
   renderer.render(scene,camera);
-  labelRenderer.render(scene,camera);
+  if (shouldRender2D()) labelRenderer.render(scene,camera);
 })();
 
 /* =========================
@@ -649,10 +567,10 @@ const ROLL_WIDTH_MM  = 1000;
 const ROLL_LENGTH_MM = 5000;
 const STEP_MM        = 100;
 /* 터치 감도/스냅/디바운스 설정 */
-const TOUCH_GAIN = 2.0;     // 터치 이동 감도(값↑ = 더 빠르게 늘어남)
-const SNAP_MM    = 50;      // 드래그 종료 시 최종 스냅 단위
-const DEBOUNCE_MS= 120;     // 드래그 중 절단 패턴 재계산 디바운스 시간
-const TOUCH_REVERSE = false; // true면 터치 아래로=증가(기존 동작), false면 PC와 동일
+const TOUCH_GAIN = 2.0;
+const SNAP_MM    = 50;
+const DEBOUNCE_MS= 120;
+const TOUCH_REVERSE = false;
 let cutsRebuildTimer = null;
 let mm2px = 0.2;
 let curLen = 0;
@@ -669,7 +587,6 @@ document.addEventListener('DOMContentLoaded', () => {
   dragHandle     = document.getElementById('dragHandle');
   lengthIndicator= document.getElementById('lengthIndicator');
 
-  // 굵은 가이드 라인 초기세팅 (붉은선)
   setGuideLines([800, 1150, 2650, 3450, 4050]);
 
   makerBtn.onclick  = () => { if (maker.classList.contains('hidden')) openMaker(); else closeMaker(); };
@@ -679,16 +596,13 @@ document.addEventListener('DOMContentLoaded', () => {
   dragHandle.addEventListener('pointerdown', onDragStart);
   dragHandle.addEventListener('pointermove', onDragMove);
   dragHandle.addEventListener('pointerup',   onDragEnd);
-// 포인터 취소까지 처리(드래그 캔슬 대비)
   dragHandle.addEventListener('pointercancel', onDragEnd);
 
-  // rollGrid에서도 드래그 가능하게(핸들 말고 빈 공간에서도)
   rollGrid.addEventListener('pointerdown', onDragStart);
   rollGrid.addEventListener('pointermove', onDragMove);
   rollGrid.addEventListener('pointerup',   onDragEnd);
   rollGrid.addEventListener('pointercancel', onDragEnd);
 
-  // PointerEvent 미지원(iOS 구형 등) 폴백: 터치 제스처 바인딩
   if (!window.PointerEvent) {
     const bindTouchFallback = (el) => {
       el.addEventListener('touchstart', (e)=>{
@@ -704,9 +618,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if(!isDragging) return;
         e.preventDefault();
         const t = e.touches[0];
-        // onDragMove와 동일 로직
-        const dy = dragStartY - t.clientY;        // 위로 드래그: dy>0
-        const sign = -1;                          // 터치는 아래로 증가
+        const dy = dragStartY - t.clientY;
+        const sign = -1;
         let next = dragStartLen + (sign * dy / mm2px);
         next = Math.round(next / STEP_MM) * STEP_MM;
         next = Math.max(0, Math.min(ROLL_LENGTH_MM, next));
@@ -723,17 +636,13 @@ document.addEventListener('DOMContentLoaded', () => {
       el.addEventListener('touchend',   ()=>{ isDragging=false; }, {passive:false});
       el.addEventListener('touchcancel',()=>{ isDragging=false; }, {passive:false});
     };
-
     bindTouchFallback(dragHandle);
     bindTouchFallback(rollGrid);
   }
   window.addEventListener('resize', () => { if(!maker.classList.contains('hidden')) computeScale(); });
-
-  // 작업순서 드롭다운/버튼 초기화
   initSequenceControls();
 });
 
-/* 모달 열기/닫기 */
 function openMaker(){
   maker.classList.remove('hidden');
   computeScale();
@@ -742,81 +651,49 @@ function openMaker(){
   maker.addEventListener('wheel', onWheel, { passive:false });
   maker.focus?.();
 }
-function closeMaker(){
-  maker.classList.add('hidden');
-  maker.removeEventListener('wheel', onWheel);
-}
+function closeMaker(){ maker.classList.add('hidden'); maker.removeEventListener('wheel', onWheel); }
 
-/* 스케일 계산 + 시트/절단 레이어 동기화 */
 function computeScale(){
   const w = rollGrid.clientWidth * 0.9;
   mm2px = Math.max(0.05, w / ROLL_WIDTH_MM);
   rollGrid.style.setProperty('--grid', (mm2px * STEP_MM) + 'px');
-
   const sheetW = (ROLL_WIDTH_MM * mm2px);
   const sheetH = (curLen * mm2px);
-
   rollSheet.style.width  = sheetW + 'px';
   rollSheet.style.height = sheetH + 'px';
   cutLayer.style.width   = sheetW + 'px';
   cutLayer.style.height  = sheetH + 'px';
-
   updateSheetAppearance();
-applyLength(curLen, 'full');
+  applyLength(curLen, 'full');
 }
 
-/* 휠 전개 */
 function onWheel(e){
   e.preventDefault(); e.stopPropagation();
   const direction = e.deltaY > 0 ? 1 : -1;
   let next = curLen + (direction * STEP_MM);
   next = Math.max(0, Math.min(ROLL_LENGTH_MM, next));
-  if(next !== curLen){
-   // curLen = next;
-   // rollSheet.style.height = (curLen * mm2px) + 'px';
-   // cutLayer.style.height  = (curLen * mm2px) + 'px';
-   // updateLengthIndicator();
-   // rebuildCuts(curLen);
-   // updateGuideLines(curLen);
-   applyLength(next, 'full');
-  }
+  if(next !== curLen){ applyLength(next, 'full'); }
 }
 
-/* 드래그 전개 */
 function onDragStart(e){
   isDragging = true;
   isTouchDrag = (e.pointerType === 'touch');
-  dragHandle.setPointerCapture(e.pointerId);
+  try{ dragHandle.setPointerCapture(e.pointerId); }catch(_){/* 일부 브라우저 폴백 */}
   dragStartY = e.clientY;
   dragStartLen = curLen;
 }
 function onDragMove(e){
-   if(!isDragging) return;
-
-  const y = (e.touches?.[0]?.clientY ?? e.clientY); // 터치/포인터 통합
+  if(!isDragging) return;
+  const y = (e.touches?.[0]?.clientY ?? e.clientY);
   const dy = dragStartY - y;
-
-  // 방향: 기본은 PC와 동일(위로=증가). 기존 방식 유지 원하면 TOUCH_REVERSE=true
   const sign = (isTouchDrag && TOUCH_REVERSE) ? -1 : 1;
-
-  // 감도: 터치일 때 더 빠르게 이동
   const gain = isTouchDrag ? TOUCH_GAIN : 1.0;
-
   const next = dragStartLen + (sign * dy / mm2px * gain);
-  // 드래그 중에는 스냅 없이 부드럽게, 절단 재계산은 디바운스
   applyLength(next, 'debounce');
 }
-function onDragEnd(){ if(!isDragging) return;
-  isDragging = false;
+function onDragEnd(){ if(!isDragging) return; isDragging = false; const snapped = Math.round(curLen / SNAP_MM) * SNAP_MM; applyLength(snapped, 'full'); }
 
-  // 최종 스냅(부드럽게 드래그 → 손 뗄 때만 딱 맞춤)
-  const snapped = Math.round(curLen / SNAP_MM) * SNAP_MM;
-  applyLength(snapped, 'full');}
-
-/* 보조 UI */
-function updateLengthIndicator(){
-  lengthIndicator.textContent = curLen.toLocaleString() + ' mm';
-}
+function updateLengthIndicator(){ lengthIndicator.textContent = curLen.toLocaleString() + ' mm'; }
 function updateSheetAppearance(){
   if (!rollSheet) return;
   const leftBandPx = 100 * mm2px;
@@ -828,10 +705,8 @@ function updateSheetAppearance(){
   rollSheet.style.backgroundSize   = '100% 100%';
 }
 
-/* ===== (가)~(마) 절단 패턴 ===== */
 const GAP_PX = 6;
 function px(mm){ return Math.round(mm * mm2px); }
-
 function addPiecePx({ rightPx, bottomPx, widthPx, heightPx, label, shrink=false }){
   const el = document.createElement('div');
   el.className = 'cutPiece' + (shrink ? ' shrink' : '');
@@ -839,126 +714,56 @@ function addPiecePx({ rightPx, bottomPx, widthPx, heightPx, label, shrink=false 
   el.style.bottom= (bottomPx) + 'px';
   el.style.width = Math.max(1, widthPx - GAP_PX) + 'px';
   el.style.height= Math.max(1, heightPx - GAP_PX) + 'px';
-  if(label){
-    const tag = document.createElement('div');
-    tag.className = 'num';
-    tag.textContent = label;
-    el.appendChild(tag);
-  }
+  if(label){ const tag = document.createElement('div'); tag.className = 'num'; tag.textContent = label; el.appendChild(tag); }
   cutLayer.appendChild(el);
 }
 function rebuildCuts(totalMm){
   if(!cutLayer) return;
   cutLayer.innerHTML = '';
-
   function rowRightTop(yTopMm, hMm, segments){
     const Hpx = px(hMm);
     const bottomPx = Math.max(0, px(totalMm - (yTopMm + hMm)));
     let xRight = 0;
     segments.forEach(seg=>{
       const WP = px(seg.wMm);
-      addPiecePx({
-        rightPx: xRight,
-        bottomPx,
-        widthPx: WP,
-        heightPx: Hpx,
-        label: seg.label,
-        shrink: !!seg.shrink
-      });
+      addPiecePx({ rightPx: xRight, bottomPx, widthPx: WP, heightPx: Hpx, label: seg.label, shrink: !!seg.shrink });
       xRight += WP + GAP_PX;
     });
   }
-
-  if(totalMm >= 200){
-    rowRightTop(0, 200, [
-      {wMm:200, label:'① 200x200'},
-      {wMm:200, label:'② 200x200'},
-      {wMm:200, label:'③ 200x200'},
-      {wMm:200, label:'④ 200x200'},
-      {wMm:200, shrink:true},
-    ]);
-  }
-  if(totalMm >= 400){
-    rowRightTop(200, 200, [{wMm:1000, label:'⑤ 1000x200'}]);
-  }
-  if(totalMm >= 600){
-    rowRightTop(400, 200, [
-      {wMm:400, label:'⑥ 400x200'},
-      {wMm:400, label:'⑦ 400x200'},
-      {wMm:200, shrink:true},
-    ]);
-  }
-  if(totalMm >= 800){
-    rowRightTop(600, 200, [
-      {wMm:800, label:'⑧ 800x200'},
-      {wMm:200, shrink:true},
-    ]);
-  }
+  if(totalMm >= 200){ rowRightTop(0, 200, [ {wMm:200, label:'① 200x200'}, {wMm:200, label:'② 200x200'}, {wMm:200, label:'③ 200x200'}, {wMm:200, label:'④ 200x200'}, {wMm:200, shrink:true}, ]); }
+  if(totalMm >= 400){ rowRightTop(200, 200, [{wMm:1000, label:'⑤ 1000x200'}]); }
+  if(totalMm >= 600){ rowRightTop(400, 200, [ {wMm:400, label:'⑥ 400x200'}, {wMm:400, label:'⑦ 400x200'}, {wMm:200, shrink:true}, ]); }
+  if(totalMm >= 800){ rowRightTop(600, 200, [ {wMm:800, label:'⑧ 800x200'}, {wMm:200, shrink:true}, ]); }
   if(totalMm >= 1150){
     const baseTop = 800, H = 350, rightW = 500;
-    addPiecePx({
-      rightPx: 0,
-      bottomPx: Math.max(0, px(totalMm - (baseTop + 150))),
-      widthPx: px(rightW),
-      heightPx: px(150),
-      label:'⑨ 500x150(미세조정-30)'
-    });
-    addPiecePx({
-      rightPx: 0,
-      bottomPx: Math.max(0, px(totalMm - (baseTop + 350))),
-      widthPx: px(rightW),
-      heightPx: px(200),
-      label:'⑮ 500x200'
-    });
+    addPiecePx({ rightPx: 0, bottomPx: Math.max(0, px(totalMm - (baseTop + 150))), widthPx: px(rightW), heightPx: px(150), label:'⑨ 500x150(미세조정-30)' });
+    addPiecePx({ rightPx: 0, bottomPx: Math.max(0, px(totalMm - (baseTop + 350))), widthPx: px(rightW), heightPx: px(200), label:'⑮ 500x200' });
     let xRight = px(rightW) + GAP_PX;
     const bottomPxBlock = Math.max(0, px(totalMm - (baseTop + H)));
     addPiecePx({ rightPx: xRight, bottomPx: bottomPxBlock, widthPx: px(300), heightPx: px(H), label:'⑩ 300x300' });
     xRight += px(300) + GAP_PX;
     addPiecePx({ rightPx: xRight, bottomPx: bottomPxBlock, widthPx: px(200), heightPx: px(H), shrink:true });
   }
-  if(totalMm >= 2650){
-    rowRightTop(1150, 1500, [{ wMm:1000, label:'⑪ 1000x1500 (미세조정 필요)' }]);
-  }
-  if(totalMm >= 3450){
-    rowRightTop(2650, 800, [{ wMm:800, label:'⑫ 1000x800 (미세조정 필요) ' }, {wMm:200, shrink:true}]);
-  }
-  if(totalMm >= 4050){
-    rowRightTop(3450, 600, [
-      { wMm:450, label:'⑭ 450x600' },
-      { wMm:450, label:'⑬ 450x500 (미세조정 -100mm)' },
-      { wMm:100, shrink:true },
-    ]);
-  }
+  if(totalMm >= 2650){ rowRightTop(1150, 1500, [{ wMm:1000, label:'⑪ 1000x1500 (미세조정 필요)' }]); }
+  if(totalMm >= 3450){ rowRightTop(2650, 800, [{ wMm:800, label:'⑫ 1000x800 (미세조정 필요) ' }, {wMm:200, shrink:true}]); }
+  if(totalMm >= 4050){ rowRightTop(3450, 600, [ { wMm:450, label:'⑭ 450x600' }, { wMm:450, label:'⑬ 450x500 (미세조정 -100mm)' }, { wMm:100, shrink:true }, ]); }
 }
-/* 길이 반영(부드러운 드래그용) */
 function applyLength(nextMm, rebuild='debounce'){
-  // 클램프
   curLen = Math.max(0, Math.min(ROLL_LENGTH_MM, nextMm));
-
-  // 즉시 반영(시각)
   const h = (curLen * mm2px) + 'px';
-  rollSheet.style.height = h;
-  cutLayer.style.height  = h;
-  updateLengthIndicator();
-  updateGuideLines(curLen);
-
-  // 절단 레이아웃은 무거우므로 상황에 따라
+  rollSheet.style.height = h; cutLayer.style.height  = h;
+  updateLengthIndicator(); updateGuideLines(curLen);
   if (rebuild === 'full'){
     if (cutsRebuildTimer) { clearTimeout(cutsRebuildTimer); cutsRebuildTimer = null; }
     rebuildCuts(curLen);
   } else if (rebuild === 'debounce') {
     if (cutsRebuildTimer) clearTimeout(cutsRebuildTimer);
-    cutsRebuildTimer = setTimeout(()=>{
-      rebuildCuts(curLen);
-      cutsRebuildTimer = null;
-    }, DEBOUNCE_MS);
-  } // 'none'이면 아무 것도 안 함
+    cutsRebuildTimer = setTimeout(()=>{ rebuildCuts(curLen); cutsRebuildTimer = null; }, DEBOUNCE_MS);
+  }
 }
 
 /* ===== 굵은 실선(여러 개) 유틸 ===== */
-let guideLayer;
-const guideEls = new Map();            // mm -> DOM 엘리먼트
-let guideList = [];
+let guideLayer; const guideEls = new Map(); let guideList = [];
 function ensureGuideLayer(){
   if (!guideLayer){
     guideLayer = document.createElement('div');
@@ -973,12 +778,7 @@ function ensureGuideLayer(){
 }
 function ensureGuide(mm){
   let el = guideEls.get(mm);
-  if (!el){
-    el = document.createElement('div');
-    el.className = 'guide-line';
-    guideLayer.appendChild(el);
-    guideEls.set(mm, el);
-  }
+  if (!el){ el = document.createElement('div'); el.className = 'guide-line'; guideLayer.appendChild(el); guideEls.set(mm, el); }
   el.style.width = (ROLL_WIDTH_MM * mm2px) + 'px';
   return el;
 }
@@ -986,9 +786,7 @@ function setGuideLines(mmArray){
   guideList = [...mmArray].sort((a,b)=>a-b);
   ensureGuideLayer();
   const keep = new Set(guideList);
-  for (const [mm, el] of guideEls){
-    if (!keep.has(mm)){ el.remove(); guideEls.delete(mm); }
-  }
+  for (const [mm, el] of guideEls){ if (!keep.has(mm)){ el.remove(); guideEls.delete(mm); } }
   guideList.forEach(mm => ensureGuide(mm));
   updateGuideLines(curLen);
 }
@@ -996,20 +794,14 @@ function updateGuideLines(totalMm){
   ensureGuideLayer();
   guideList.forEach(mm => {
     const el = ensureGuide(mm);
-    if (totalMm < mm){
-      el.style.display = 'none';
-    }else{
-      el.style.display = '';
-      el.style.bottom = px(totalMm - mm) + 'px';
-    }
+    if (totalMm < mm){ el.style.display = 'none'; }
+    else { el.style.display = ''; el.style.bottom = px(totalMm - mm) + 'px'; }
   });
 }
 
 /* =========================
  * 3) 작업순서(1~15)
  * ======================= */
-
-/* 아이템 제작에서 쓰던 사이즈 매핑(mm) */
 const SEQ_SIZES = {
   1:[200,200], 2:[200,200], 3:[200,200], 4:[200,200],
   5:[1000,200],
@@ -1022,7 +814,6 @@ const SEQ_SIZES = {
   13:[450,600], 14:[450,600],
   15:[500,200],
 };
-/* 중심점/옵션(예시) */
 const WORK_STEPS = [
   {id:1,  c:[ 400,  Y_TOP,    -798], label:'①'},
   {id:2,  c:[ 400,  Y_TOP+50, -798], label:'②', plane:'verticalZ', size:[200,200]},
@@ -1041,20 +832,16 @@ const WORK_STEPS = [
   {id:15, c:[ 500,  Y_TOP,    -500], label:'⑮'},
 ];
 
-/* 시각화: 단일 스텝(지정 그룹에 그림) */
 function drawSeqMark(step, targetGroup){
   const label = step.label ?? ('#'+step.id);
   const [w, h] = (step.size || SEQ_SIZES[step.id]);
   const [cx, cy, cz] = step.c;
   const color = 0x00cfe8;
-
   if (step.plane === 'verticalX') {
-    const y1 = cy - h/2, y2 = cy + h/2;
-    const z1 = cz - w/2, z2 = cz + w/2;
+    const y1 = cy - h/2, y2 = cy + h/2; const z1 = cz - w/2, z2 = cz + w/2;
     addMarkRectVerticalX(cx, y1, y2, z1, z2, label, { color, opacity:0.26, outline:true, target: targetGroup });
   } else if (step.plane === 'verticalZ') {
-    const y1 = cy - h/2, y2 = cy + h/2;
-    const x1 = cx - w/2, x2 = cx + w/2;
+    const y1 = cy - h/2, y2 = cy + h/2; const x1 = cx - w/2, x2 = cx + w/2;
     addMarkRectVerticalZ(cz, y1, y2, x1, x2, label, { color, opacity:0.26, outline:true, target: targetGroup });
   } else {
     const y = Y_TOP + 0.07;
@@ -1067,31 +854,25 @@ function drawSeqMark(step, targetGroup){
   }
 }
 
-/* 자동플레이 */
 const STEP_DELAY_MS = 5000;
 let seqRunning = false, seqIndex = 0, seqTimer = null;
 
 function showStepByIndex(i){
   const step = WORK_STEPS[i]; if(!step) return;
-  clearGroup(seqAutoGroup);                    // 자동 표시는 항상 1개만
+  clearGroup(seqAutoGroup);
   drawSeqMark(step, seqAutoGroup);
   const c = new THREE.Vector3(step.c[0], step.c[1], step.c[2]);
   flyTo({x:c.x, y:c.y, z:c.z}, step.cam||{});
-  showTipForStep(step);                        // ★ 단계 상세 툴팁 표시
+  showTipForStep(step);
 }
 function startSequence(){
-  // 기존 표시(단일/자동)와 툴팁 초기화 후 시작
-  clearGroup(seqSingleGroup);
-  clearGroup(seqAutoGroup);
-  hideTip();
-  if(seqRunning) return;
-  seqRunning = true; seqIndex = 0;
+  clearGroup(seqSingleGroup); clearGroup(seqAutoGroup); hideTip();
+  if(seqRunning) return; seqRunning = true; seqIndex = 0;
   document.getElementById('toggleSeq').textContent = '중지';
   stepTick();
 }
 function stopSequence(){
-  seqRunning = false;
-  clearTimeout(seqTimer); seqTimer=null;
+  seqRunning = false; clearTimeout(seqTimer); seqTimer=null;
   clearGroup(seqAutoGroup);
   document.getElementById('toggleSeq').textContent = '자동플레이';
 }
@@ -1101,38 +882,25 @@ function stepTick(){
   showStepByIndex(seqIndex++);
   seqTimer = setTimeout(stepTick, STEP_DELAY_MS);
 }
-document.getElementById('toggleSeq').onclick = () => {
-  if(seqRunning) stopSequence();
-  else startSequence();
-};
+document.getElementById('toggleSeq').onclick = () => { if(seqRunning) stopSequence(); else startSequence(); };
 
-/* 단일 단계 이동(표시는 항상 1개만 유지) */
 function goToStep(id){
-  // 자동 진행 중이면 중지
   if (seqRunning) stopSequence();
-  // 기존 단일 표시 제거 후, 해당 단계만 표시
   clearGroup(seqSingleGroup);
   const step = WORK_STEPS.find(s=>s.id===id); if(!step) return;
   drawSeqMark(step, seqSingleGroup);
   const c = new THREE.Vector3(step.c[0], step.c[1], step.c[2]);
   flyTo({x:c.x, y:c.y, z:c.z}, step.cam||{});
-  showTipForStep(step);                        // ★ 단일 단계에서도 툴팁 표시
+  showTipForStep(step);
 }
-
-/* 드롭다운 초기화 */
 function initSequenceControls(){
   const stepSel = document.getElementById('seqStep');
   const btnGo   = document.getElementById('btnGoStep');
   if(!stepSel || !btnGo) return;
   stepSel.innerHTML = '';
-  for(let i=1;i<=15;i++){
-    const o=document.createElement('option'); o.value=i; o.textContent=i; stepSel.appendChild(o);
-  }
+  for(let i=1;i<=15;i++){ const o=document.createElement('option'); o.value=i; o.textContent=i; stepSel.appendChild(o); }
   stepSel.value='1';
-  btnGo.onclick = () => {
-    const id = parseInt(stepSel.value,10);
-    if(Number.isFinite(id)) goToStep(id);
-  };
+  btnGo.onclick = () => { const id = parseInt(stepSel.value,10); if(Number.isFinite(id)) goToStep(id); };
 }
 </script>
 
@@ -1143,7 +911,6 @@ function initSequenceControls(){
       <div class="m-title">재단</div>
       <button class="m-close" id="makerClose">닫기 ✕</button>
     </div>
-
     <div class="m-body">
       <div class="rollArea">
         <div class="rollGrid" id="rollGrid">
