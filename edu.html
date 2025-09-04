@@ -575,7 +575,7 @@ const STEP_INFO = {
   8:{ title:'⑧ 800×200 패널 보강', img:'8.jpg', html:'실측한 치수만큼 제거 한뒤, 부착하면 코너 작업이 용이합니다.' },
   9:{ title:'⑨ 470×150 파이프 보강', img:'9.jpg', html:'15번과 헷갈리지 않도록 주의!!' },
   10:{ title:'⑩ 300×300 파이프 보강', img:'10.jpg', html:'파이프 위에서 씌우지 말것!' },
-  11:{ title:'⑪ 1000×1600 큰바닥', img:'11.jpg', html:'실측한 치수만큼 제거한 뒤, 부착하시면 코너작업이 용이합니다. 나머지 부분은 상단 부착하기전에 제거합니다.' },
+  11:{ title:'⑪ 1000×1500 큰바닥', img:'11.jpg', html:'실측한 치수만큼 제거한 뒤, 부착하시면 코너작업이 용이합니다. 나머지 부분은 상단 부착하기전에 제거합니다.' },
   12:{ title:'⑫ 800×1000 작은바닥', img:'12.jpg', html:'접착면을 부착하지 않도록 주의!!' },
   13:{ title:'⑬ 500×450 우측 패널', img:'13.jpg', html:'14번과 헷갈리지 않도록 주의!! 튀어나온 모서리부터 부착!!' },
   14:{ title:'⑭ 600×450 좌측 패널', img:'14.jpg', html:'13번과 헷갈리지 않도록 주의!!' },
@@ -669,8 +669,8 @@ document.addEventListener('DOMContentLoaded', () => {
   dragHandle     = document.getElementById('dragHandle');
   lengthIndicator= document.getElementById('lengthIndicator');
 
-  // 굵은 가이드 라인 초기세팅
-  setGuideLines([800, 1150, 2750, 3550, 4150]);
+  // 굵은 가이드 라인 초기세팅 (붉은선)
+  setGuideLines([800, 1150, 2650, 3450, 4050]);
 
   makerBtn.onclick  = () => { if (maker.classList.contains('hidden')) openMaker(); else closeMaker(); };
   makerClose.onclick= closeMaker;
@@ -916,14 +916,14 @@ function rebuildCuts(totalMm){
     xRight += px(300) + GAP_PX;
     addPiecePx({ rightPx: xRight, bottomPx: bottomPxBlock, widthPx: px(200), heightPx: px(H), shrink:true });
   }
-  if(totalMm >= 2750){
-    rowRightTop(1150, 1600, [{ wMm:1000, label:'⑪ 1000x1600 (미세조정 필요)' }]);
+  if(totalMm >= 2650){
+    rowRightTop(1150, 1500, [{ wMm:1000, label:'⑪ 1000x1500 (미세조정 필요)' }]);
   }
-  if(totalMm >= 3550){
-    rowRightTop(2750, 800, [{ wMm:800, label:'⑫ 1000x800 (미세조정 필요) ' }, {wMm:200, shrink:true}]);
+  if(totalMm >= 3450){
+    rowRightTop(2650, 800, [{ wMm:800, label:'⑫ 1000x800 (미세조정 필요) ' }, {wMm:200, shrink:true}]);
   }
-  if(totalMm >= 4150){
-    rowRightTop(3550, 600, [
+  if(totalMm >= 4050){
+    rowRightTop(3450, 600, [
       { wMm:450, label:'⑭ 450x600' },
       { wMm:450, label:'⑬ 450x500 (미세조정 -100mm)' },
       { wMm:100, shrink:true },
@@ -1017,7 +1017,7 @@ const SEQ_SIZES = {
   8:[200,800],
   9:[500,150],
   10:[300,350],
-  11:[1000,1600],
+  11:[1000,1500],
   12:[1000,800],
   13:[450,600], 14:[450,600],
   15:[500,200],
@@ -1034,7 +1034,7 @@ const WORK_STEPS = [
   {id:8,  c:[   0,  Y_TOP,    -450], label:'⑧', cam:{offset:[500,520,150]}},
   {id:9,  c:[ 500,  Y_TOP,    -500], label:'⑨'},
   {id:10, c:[ 500,  Y_TOP,    -500], label:'⑩'},
-  {id:11, c:[ 900,  Y_TOP,    -850], label:'⑪'},
+  {id:11, c:[ 900,  Y_TOP,    -800], label:'⑪'},
   {id:12, c:[   0,  Y_TOP,    -400], label:'⑫'},
   {id:13, c:[ 402,  Y_TOP,   -1000], label:'⑬', plane:'verticalX', size:[400,600], cam:{offset:[500,520,150]}},
   {id:14, c:[ 200,  Y_TOP+15, -798], label:'⑭', plane:'verticalZ'},
