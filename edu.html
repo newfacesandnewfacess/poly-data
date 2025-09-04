@@ -662,7 +662,11 @@ document.addEventListener('DOMContentLoaded', () => {
   cutLayer       = document.getElementById('cutLayer');
   dragHandle     = document.getElementById('dragHandle');
   lengthIndicator= document.getElementById('lengthIndicator');
-
+// 기존 바인딩 아래에 추가
+rollGrid.addEventListener('pointerdown', onDragStart);
+rollGrid.addEventListener('pointermove', onDragMove);
+rollGrid.addEventListener('pointerup',   onDragEnd);
+rollGrid.addEventListener('pointercancel', onDragEnd);
   // 굵은 가이드 라인 초기세팅
   setGuideLines([800, 1150, 2750, 3550, 4150]);
 
@@ -678,6 +682,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 작업순서 드롭다운/버튼 초기화
   initSequenceControls();
+  // ===== PointerEvent 미지원/불안정 환경 폴백(터치 이벤트) =====
+if (!window.PointerEvent) {
+  const bindTouchFallback = (el) => {
+    el.addEventListener('touchstart', (e)=>{
+      e.preventDefault();
+      const t = e.touches[0];
+      isDragging   = true;
+      isTouchDrag  = true;
+      dragStartY   = t.clientY;
+      dragStartLen = curLen;
+    }, {passive:false});
+
+    el.addEventListener('touchmove', (e)=>{
+      if(!isDragging) return;
+      e.preventDefault();
+      const t = e.touches[0];
+      applyDragByClientY(t.clientY, /*isTouch=*/true);
+    }, {passive:false});
+
+    el.addEventListener('touchend', (e)=>{
+      isDragging = false;
+    }, {passive:false});
+
+    el.addEventListener('touchcancel', (e)=>{
+      isDragging = false;
+    }, {passive:false});
+  };
+
+  bindTouchFallback(dragHandle);
+  bindTouchFallback(rollGrid);
+}
+
 });
 
 /* 모달 열기/닫기 */
@@ -728,6 +764,41 @@ function onWheel(e){
     rebuildCuts(curLen);
     updateGuideLines(curLen);
   }
+}
+function applyDragByClientY(clientY, isTouch){
+  const dy = dragStartY - clientY;           // 위로 드래그: dy>0
+  const sign = isTouch ? -1 : 1;             // 터치: 아래로 증가(요구사항 유지)
+  let next = dragStartLen + (sign * dy / mm2px);
+  next = Math.round(next / STEP_MM) * STEP_MM;
+  next = Math.max(0, Math.min(ROLL_LENGTH_MM, next));
+  if(next !== curLen){
+    curLen = next;
+    rollSheet.style.height = (curLen * mm2px) + 'px';
+    cutLayer.style.height  = (curLen * mm2px) + 'px';
+    updateLengthIndicator();
+    rebuildCuts(curLen);
+    updateGuideLines(curLen);
+  }
+}
+
+function onDragStart(e){
+  e.preventDefault();
+  isDragging  = true;
+  isTouchDrag = (e.pointerType === 'touch');
+  dragStartY  = e.clientY;
+  dragStartLen= curLen;
+  // 포인터 캡처: 현재 타겟(핸들이든 그리드든)으로 캡처
+  e.currentTarget.setPointerCapture?.(e.pointerId);
+}
+
+function onDragMove(e){
+  if(!isDragging) return;
+  e.preventDefault();
+  applyDragByClientY(e.clientY, isTouchDrag);
+}
+
+function onDragEnd(e){
+  isDragging = false;
 }
 
 /* 드래그 전개 */
@@ -1059,7 +1130,7 @@ function initSequenceControls(){
 <div id="makerModal" class="modal hidden" tabindex="-1">
   <div class="window">
     <div class="m-header">
-      <div class="m-title">아이템 제작</div>
+      <div class="m-title">재단</div>
       <button class="m-close" id="makerClose">닫기 ✕</button>
     </div>
 
