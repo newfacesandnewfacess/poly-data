@@ -94,7 +94,7 @@
 
   /* 모달 내부에서 바디로 스크롤 전파 방지 */
   #makerModal, #makerModal * { overscroll-behavior: contain; }
-
+  .rollGrid, .dragHandle { touch-action: none; }
   /* 굵은 가로 가이드 라인(롤과 함께 위로 이동) */
   .guide-line{
     position:absolute;
@@ -648,7 +648,12 @@ let rollGrid, rollSheet, cutLayer, dragHandle, lengthIndicator;
 const ROLL_WIDTH_MM  = 1000;
 const ROLL_LENGTH_MM = 5000;
 const STEP_MM        = 100;
-
+/* 터치 감도/스냅/디바운스 설정 */
+const TOUCH_GAIN = 2.0;     // 터치 이동 감도(값↑ = 더 빠르게 늘어남)
+const SNAP_MM    = 50;      // 드래그 종료 시 최종 스냅 단위
+const DEBOUNCE_MS= 120;     // 드래그 중 절단 패턴 재계산 디바운스 시간
+const TOUCH_REVERSE = false; // true면 터치 아래로=증가(기존 동작), false면 PC와 동일
+let cutsRebuildTimer = null;
 let mm2px = 0.2;
 let curLen = 0;
 let isDragging = false, dragStartY = 0, dragStartLen = 0;
@@ -756,10 +761,8 @@ function computeScale(){
   cutLayer.style.width   = sheetW + 'px';
   cutLayer.style.height  = sheetH + 'px';
 
-  updateLengthIndicator();
   updateSheetAppearance();
-  rebuildCuts(curLen);
-  updateGuideLines(curLen);
+applyLength(curLen, 'full');
 }
 
 /* 휠 전개 */
@@ -769,12 +772,13 @@ function onWheel(e){
   let next = curLen + (direction * STEP_MM);
   next = Math.max(0, Math.min(ROLL_LENGTH_MM, next));
   if(next !== curLen){
-    curLen = next;
-    rollSheet.style.height = (curLen * mm2px) + 'px';
-    cutLayer.style.height  = (curLen * mm2px) + 'px';
-    updateLengthIndicator();
-    rebuildCuts(curLen);
-    updateGuideLines(curLen);
+   // curLen = next;
+   // rollSheet.style.height = (curLen * mm2px) + 'px';
+   // cutLayer.style.height  = (curLen * mm2px) + 'px';
+   // updateLengthIndicator();
+   // rebuildCuts(curLen);
+   // updateGuideLines(curLen);
+   applyLength(next, 'full');
   }
 }
 
@@ -787,22 +791,27 @@ function onDragStart(e){
   dragStartLen = curLen;
 }
 function onDragMove(e){
-  if(!isDragging) return;
-  const dy = dragStartY - e.clientY;       // 위로 드래그: dy>0
-  const sign = isTouchDrag ? -1 : 1;       // 터치: 아래로 증가
-  let next = dragStartLen + (sign * dy / mm2px);
-  next = Math.round(next / STEP_MM) * STEP_MM;
-  next = Math.max(0, Math.min(ROLL_LENGTH_MM, next));
-  if(next !== curLen){
-    curLen = next;
-    rollSheet.style.height = (curLen * mm2px) + 'px';
-    cutLayer.style.height  = (curLen * mm2px) + 'px';
-    updateLengthIndicator();
-    rebuildCuts(curLen);
-    updateGuideLines(curLen);
-  }
+   if(!isDragging) return;
+
+  const y = (e.touches?.[0]?.clientY ?? e.clientY); // 터치/포인터 통합
+  const dy = dragStartY - y;
+
+  // 방향: 기본은 PC와 동일(위로=증가). 기존 방식 유지 원하면 TOUCH_REVERSE=true
+  const sign = (isTouchDrag && TOUCH_REVERSE) ? -1 : 1;
+
+  // 감도: 터치일 때 더 빠르게 이동
+  const gain = isTouchDrag ? TOUCH_GAIN : 1.0;
+
+  const next = dragStartLen + (sign * dy / mm2px * gain);
+  // 드래그 중에는 스냅 없이 부드럽게, 절단 재계산은 디바운스
+  applyLength(next, 'debounce');
 }
-function onDragEnd(){ isDragging = false; }
+function onDragEnd(){ if(!isDragging) return;
+  isDragging = false;
+
+  // 최종 스냅(부드럽게 드래그 → 손 뗄 때만 딱 맞춤)
+  const snapped = Math.round(curLen / SNAP_MM) * SNAP_MM;
+  applyLength(snapped, 'full');}
 
 /* 보조 UI */
 function updateLengthIndicator(){
@@ -920,6 +929,30 @@ function rebuildCuts(totalMm){
       { wMm:100, shrink:true },
     ]);
   }
+}
+/* 길이 반영(부드러운 드래그용) */
+function applyLength(nextMm, rebuild='debounce'){
+  // 클램프
+  curLen = Math.max(0, Math.min(ROLL_LENGTH_MM, nextMm));
+
+  // 즉시 반영(시각)
+  const h = (curLen * mm2px) + 'px';
+  rollSheet.style.height = h;
+  cutLayer.style.height  = h;
+  updateLengthIndicator();
+  updateGuideLines(curLen);
+
+  // 절단 레이아웃은 무거우므로 상황에 따라
+  if (rebuild === 'full'){
+    if (cutsRebuildTimer) { clearTimeout(cutsRebuildTimer); cutsRebuildTimer = null; }
+    rebuildCuts(curLen);
+  } else if (rebuild === 'debounce') {
+    if (cutsRebuildTimer) clearTimeout(cutsRebuildTimer);
+    cutsRebuildTimer = setTimeout(()=>{
+      rebuildCuts(curLen);
+      cutsRebuildTimer = null;
+    }, DEBOUNCE_MS);
+  } // 'none'이면 아무 것도 안 함
 }
 
 /* ===== 굵은 실선(여러 개) 유틸 ===== */
