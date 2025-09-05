@@ -77,6 +77,15 @@
                  background:linear-gradient(135deg,#1a2238,#0f1628) }
   .tip-close{ background:transparent; color:#fff; border:1px solid rgba(255,255,255,.25); padding:4px 8px; border-radius:8px; cursor:pointer; }
   .tip-close:hover{ background:rgba(255,255,255,.08) }
+  /* #stage는 이미 존재. 필요 시 z-index만 조정 */
+#stage::after{
+  content:"";
+  position: fixed; right:16px; bottom:16px;
+  width:220px; height:60px;
+  background: url("./lib/watermark.png") no-repeat center / contain;
+  opacity:.9; pointer-events:none; z-index:10001;
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,.25));
+}
 </style>
 </head>
 <body>
