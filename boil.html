@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>보일의 법칙 (Boyle's Law) – 3D 시뮬레이터 (r147 / 로컬 모듈)</title>
+<style>
+  :root{
+    --bg:#0b1220; --panel:rgba(10,16,28,.86); --line:rgba(255,255,255,.12); --muted:#9fb0c6;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;overflow:hidden}
+  #stage{position:fixed;inset:0;display:block}
+
+  #ui{
+    position:fixed;left:12px;top:12px;display:flex;flex-direction:column;gap:10px;
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 12px;backdrop-filter:blur(8px);
+    width:min(320px,92vw); z-index:10;
+  }
+  #ui h2{margin:0 0 6px;font-size:18px}
+  .row{display:grid;grid-template-columns:80px 1fr 56px;gap:8px;align-items:center}
+  .mini{font-size:12px;color:var(--muted)}
+  .meter{display:flex;gap:6px;flex-wrap:wrap}
+  .badge{display:inline-block;background:#122035;border:1px solid var(--line);border-radius:10px;padding:6px 8px;font-variant-numeric:tabular-nums}
+  .btn{cursor:pointer;border:1px solid var(--line);background:#13223a;padding:6px 10px;border-radius:10px}
+
+  #chart{
+    position:fixed;right:12px;bottom:12px;width:min(440px,92vw);height:240px;background:var(--panel);
+    border:1px solid var(--line);border-radius:14px;padding:10px 12px;z-index:10;
+  }
+  #chart canvas{width:100%;height:100%}
+
+  #help{
+    position:fixed;right:12px;top:12px;background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:10px 12px;max-width:min(480px,92vw);z-index:10;
+  }
+  #startHint{position:fixed;left:0;right:0;bottom:26px;display:flex;justify-content:center;z-index:20}
+  #startBtn{background:#1b2f52;border:1px solid var(--line);border-radius:999px;padding:10px 16px;cursor:pointer}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<!-- UI -->
+<div id="ui">
+  <h2>보일의 법칙 시뮬레이터</h2>
+  <div class="mini">T, n 일정 → <b>P·V = 상수</b></div>
+
+  <div class="row">
+    <label>피스톤</label>
+    <input id="vol" type="range" min="0.25" max="1.00" step="0.01" value="0.70">
+    <output id="volOut">0.70</output>
+  </div>
+
+  <div class="row">
+    <label>분자수</label>
+    <input id="mol" type="range" min="200" max="2000" step="50" value="800">
+    <output id="molOut">800</output>
+  </div>
+
+  <div class="row">
+    <label>온도</label>
+    <input id="temp" type="range" min="273" max="373" step="1" value="298">
+    <output id="tempOut">298K</output>
+  </div>
+
+  <div class="meter">
+    <span class="badge">V: <span id="vBadge">0.70 L*</span></span>
+    <span class="badge">P: <span id="pBadge">— kPa*</span></span>
+    <span class="badge">PV: <span id="pvBadge">—</span></span>
+  </div>
+  <div class="mini">* 시각화를 위한 상대단위. 실제 단위 환산은 스케일/가정에 따라 달라집니다.</div>
+
+  <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+    <button class="btn" id="reset">초기화</button>
+    <button class="btn" id="shake">빠른 압축</button>
+    <button class="btn" id="pause">일시정지</button>
+  </div>
+</div>
+
+<div id="chart">
+  <div class="mini">실시간 P 대 1/V (Boyle curve)</div>
+  <canvas id="plot"></canvas>
+</div>
+
+<div id="help">
+  <b>조작</b> – 슬라이더로 <b>V(피스톤)</b>, <b>N(분자수)</b>, <b>T(온도)</b>를 조절하세요.  
+  V↓ → P↑, V↑ → P↓. 그래프는 이론대로 <i>P ∝ 1/V</i> 곡선을 그립니다.
+</div>
+
+<div id="startHint"><button id="startBtn">터치/클릭: 오디오 활성화</button></div>
+
+<script type="module">
+  /* ===== r147 로컬 모듈 ===== */
+  import * as THREE from './lib/three.module.js';
+  import { OrbitControls } from './lib/controls/OrbitControls.js';
+
+  /* ===== 렌더러/씬/카메라 ===== */
+  const canvas = document.getElementById('stage');
+  const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b1220);
+
+  const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.01, 100);
+  camera.position.set(2.2, 1.6, 2.6);
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x223344, 1.0);
+  scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.85);
+  dir.position.set(3,4,2);
+  scene.add(dir);
+
+  const grid = new THREE.GridHelper(10,10, 0x335577, 0x1a2a3f);
+  grid.position.y = -0.01;
+  scene.add(grid);
+
+  /* ===== 피스톤-실린더 ===== */
+  const radius = 0.6;
+  const maxHeight = 1.2; // V=1.0
+  const cylGeom = new THREE.CylinderGeometry(radius, radius, maxHeight, 48, 1, true);
+  const cylMat  = new THREE.MeshPhysicalMaterial({
+    color:0x0d2036, roughness:0.7, metalness:0.0, transparent:true, opacity:0.28, side:THREE.DoubleSide
+  });
+  const cylinder = new THREE.Mesh(cylGeom, cylMat);
+  cylinder.position.set(0, maxHeight/2, 0);
+  scene.add(cylinder);
+
+  const pistonGeom = new THREE.CylinderGeometry(radius*0.99, radius*0.99, 0.02, 48);
+  const pistonMat  = new THREE.MeshStandardMaterial({color:0x6aa1ff, metalness:0.6, roughness:0.2});
+  const piston = new THREE.Mesh(pistonGeom, pistonMat);
+  piston.position.set(0, maxHeight, 0);
+  scene.add(piston);
+
+  // 눈금
+  const ticks = new THREE.Group();
+  for(let i=0;i<=10;i++){
+    const y = (maxHeight/10)*i;
+    const geo = new THREE.BoxGeometry(0.02,0.002,0.12);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color:0x92b3ff}));
+    mesh.position.set(radius+0.1, y, 0);
+    ticks.add(mesh);
+  }
+  scene.add(ticks);
+
+  /* ===== 기체 입자 ===== */
+  const sphereGeo = new THREE.SphereGeometry(0.015, 12, 12);
+  function makeParticleMat(){
+    const c = new THREE.Color().setHSL(0.58, 0.6, 0.6);
+    return new THREE.MeshStandardMaterial({color:c, roughness:0.4, metalness:0.0});
+  }
+  const particleGroup = new THREE.Group();
+  scene.add(particleGroup);
+  const particles = [];
+  let particleCount = 800;
+
+  function spawnParticles(n){
+    while(particleGroup.children.length) particleGroup.remove(particleGroup.children[0]);
+    particles.length = 0;
+    for(let i=0;i<n;i++){
+      const m = new THREE.Mesh(sphereGeo, makeParticleMat());
+      m.position.set(
+        (Math.random()*2-1) * (radius*0.8),
+        Math.random()* (piston.position.y),
+        (Math.random()*2-1) * (radius*0.8)
+      );
+      m.userData.v = new THREE.Vector3(
+        (Math.random()*2-1),
+        (Math.random()*2-1),
+        (Math.random()*2-1)
+      ).normalize().multiplyScalar(0.35);
+      particles.push(m);
+      particleGroup.add(m);
+    }
+  }
+
+  /* ===== 상태/UI 참조 ===== */
+  const $ = id => document.getElementById(id);
+  const vol = $('vol'), mol = $('mol'), temp = $('temp');
+  const volOut = $('volOut'), molOut = $('molOut'), tempOut = $('tempOut');
+  const vBadge = $('vBadge'), pBadge = $('pBadge'), pvBadge = $('pvBadge');
+  const btnReset = $('reset'), btnShake = $('shake'), btnPause = $('pause');
+  const startBtn = $('startBtn'), startHint = $('startHint');
+
+  let paused = false;
+  let V = parseFloat(vol.value);
+  let N = parseInt(mol.value,10);
+  let T = parseInt(temp.value,10);
+
+  spawnParticles(N);
+
+  function setPistonByVolume(v){
+    V = THREE.MathUtils.clamp(v, 0.25, 1.0);
+    const h = maxHeight * V;
+    piston.position.y = h;
+    volOut.value = V.toFixed(2);
+    vBadge.textContent = `${V.toFixed(2)} L*`;
+    cylinder.scale.y = V;
+    cylinder.position.y = (maxHeight*V)/2;
+  }
+  setPistonByVolume(V);
+
+  // 이상기체 근사: P ∝ N·T / V
+  const k = 1.0;
+  function calcPressure(){
+    return k * (N * (T/298)) / V;
+  }
+  function refreshBadges(){
+    const P = calcPressure();
+    pBadge.textContent = `${P.toFixed(2)} kPa*`;
+    pvBadge.textContent = (P*V).toFixed(2);
+  }
+  refreshBadges();
+
+  vol.addEventListener('input', e=>{
+    setPistonByVolume(parseFloat(e.target.value));
+    refreshBadges(); addChartPoint(); cueHiss();
+  });
+  mol.addEventListener('input', e=>{
+    N = parseInt(e.target.value,10);
+    molOut.value = N;
+    spawnParticles(N);
+    refreshBadges(); addChartPoint();
+  });
+  temp.addEventListener('input', e=>{
+    T = parseInt(e.target.value,10);
+    tempOut.value = `${T}K`;
+    setTempColor();
+    refreshBadges(); addChartPoint();
+  });
+
+  function setTempColor(){
+    const tNorm = THREE.MathUtils.clamp((T-273)/(373-273), 0, 1);
+    particleGroup.children.forEach(m=>{
+      const hue = THREE.MathUtils.lerp(0.58, 0.02, tNorm);
+      m.material.color.setHSL(hue, 0.65, 0.55);
+    });
+  }
+  setTempColor();
+
+  btnReset.addEventListener('click', ()=>{
+    vol.value = 0.70; setPistonByVolume(0.70);
+    mol.value = 800;  molOut.value = 800; N=800; spawnParticles(N);
+    temp.value = 298; tempOut.value = '298K'; T=298; setTempColor();
+    refreshBadges(); resetChart();
+  });
+  btnShake.addEventListener('click', ()=>{
+    const target = Math.max(0.35, V*0.6);
+    animatePiston(V, target, 0.18, ()=> animatePiston(target, V, 0.35));
+    boom();
+  });
+  btnPause.addEventListener('click', ()=>{
+    paused = !paused;
+    btnPause.textContent = paused? '재생' : '일시정지';
+  });
+
+  function animatePiston(fromV, toV, dur=0.3, onDone){
+    const start = performance.now();
+    function step(now){
+      const t = Math.min(1, (now-start)/(dur*1000));
+      const s = t*(2-t);
+      const v = THREE.MathUtils.lerp(fromV, toV, s);
+      setPistonByVolume(v);
+      refreshBadges(); addChartPoint();
+      if(t<1) requestAnimationFrame(step); else onDone && onDone();
+    }
+    requestAnimationFrame(step);
+  }
+
+  function tick(dt){
+    const speedScale = (T/298);
+    const h = piston.position.y;
+    for(const m of particles){
+      const v = m.userData.v;
+      m.position.addScaledVector(v, dt*speedScale);
+
+      // 원통벽 반사
+      const r2 = m.position.x*m.position.x + m.position.z*m.position.z;
+      const rLim = (radius*0.95);
+      if(r2 > rLim*rLim){
+        const normal = new THREE.Vector3(m.position.x,0,m.position.z).normalize();
+        const vn = normal.clone().multiplyScalar(v.dot(normal));
+        const vt = v.clone().sub(vn);
+        v.copy(vt.sub(vn));
+        m.position.x = normal.x * rLim * 0.999;
+        m.position.z = normal.z * rLim * 0.999;
+      }
+      // 바닥/상판 반사
+      if(m.position.y <= 0.01){ m.position.y = 0.011; v.y = Math.abs(v.y); }
+      else if(m.position.y >= h-0.02){ m.position.y = h-0.021; v.y = -Math.abs(v.y); }
+    }
+  }
+
+  /* ===== 그래프 (P vs 1/V) ===== */
+  const plotCanvas = document.getElementById('plot');
+  const plotCtx = plotCanvas.getContext('2d');
+  let chartData = [];
+  function resizePlot(){
+    const dpr = Math.min(devicePixelRatio, 2);
+    plotCanvas.width = plotCanvas.clientWidth * dpr;
+    plotCanvas.height = plotCanvas.clientHeight * dpr;
+    drawChart();
+  }
+  function resetChart(){ chartData = []; addChartPoint(); }
+  function addChartPoint(){
+    const invV = 1.0 / V;
+    const P = calcPressure();
+    chartData.push({x:invV, y:P});
+    if(chartData.length>240) chartData.shift();
+    drawChart();
+  }
+  function drawChart(){
+    const ctx = plotCtx, W = plotCanvas.width, H = plotCanvas.height;
+    ctx.clearRect(0,0,W,H);
+    ctx.save();
+    ctx.strokeStyle = '#244060'; ctx.lineWidth = 1;
+    ctx.strokeRect(40, 16, W-56, H-40);
+    ctx.fillStyle = '#9fb0c6'; ctx.font = '12px system-ui';
+    ctx.fillText('1/V', W-40, H-10);
+    ctx.save(); ctx.translate(10, 20); ctx.rotate(-Math.PI/2); ctx.fillText('Pressure(상대)', 0, 0); ctx.restore();
+
+    if(chartData.length<2){ ctx.restore(); return; }
+    const xs = chartData.map(p=>p.x), ys = chartData.map(p=>p.y);
+    const xMin = Math.min(...xs)*0.95, xMax = Math.max(...xs)*1.05;
+    const yMin = Math.min(...ys)*0.9,  yMax = Math.max(...ys)*1.1;
+    const px = x => 40 + (x - xMin)/(xMax-xMin) * (W-56);
+    const py = y => 16 + (1 - (y - yMin)/(yMax-yMin)) * (H-40);
+
+    ctx.beginPath();
+    for(let i=0;i<chartData.length;i++){
+      const p = chartData[i];
+      const X = px(p.x), Y = py(p.y);
+      if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
+    }
+    ctx.lineWidth = 2; ctx.strokeStyle = '#7aa3ff'; ctx.stroke();
+    ctx.restore();
+  }
+  addEventListener('resize', ()=>{
+    renderer.setSize(innerWidth, innerHeight);
+    camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+    resizePlot();
+  });
+  resizePlot(); resetChart();
+
+  /* ===== 오디오(선택) ===== */
+  let ac, boomBuf;
+  function initAudio(){
+    if(ac) return;
+    ac = new (window.AudioContext||window.webkitAudioContext)();
+    const noiseBuf = ac.createBuffer(1, ac.sampleRate*1, ac.sampleRate);
+    const ch = noiseBuf.getChannelData(0);
+    for(let i=0;i<ch.length;i++) ch[i] = (Math.random()*2-1)*0.35;
+    boomBuf = noiseBuf;
+  }
+  function cueHiss(){
+    if(!ac) return;
+    const src = ac.createBufferSource(); src.buffer = boomBuf;
+    const g = ac.createGain(); g.gain.value = 0.0;
+    src.connect(g).connect(ac.destination);
+    const t = ac.currentTime;
+    g.gain.linearRampToValueAtTime(0.0, t);
+    g.gain.linearRampToValueAtTime(0.14, t+0.04);
+    g.gain.exponentialRampToValueAtTime(0.001, t+0.22);
+    src.start(t); src.stop(t+0.25);
+  }
+  function boom(){ cueHiss(); }
+
+  const startBtnEl = document.getElementById('startBtn');
+  const startHintEl = document.getElementById('startHint');
+  startBtnEl.addEventListener('click', async ()=>{
+    initAudio(); await ac?.resume(); startHintEl.style.display='none';
+  });
+  addEventListener('pointerdown', ()=>{
+    if(!ac){ initAudio(); ac?.resume(); startHintEl.style.display='none'; }
+  }, {once:true});
+
+  /* ===== 루프 ===== */
+  let last = performance.now();
+  function loop(now){
+    const dt = Math.min(0.033, (now-last)/1000); last = now;
+    if(!paused) tick(dt);
+    controls.update();
+    renderer.render(scene, camera);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // 초기 포인트
+  addChartPoint();
+</script>
+</body>
+</html>
