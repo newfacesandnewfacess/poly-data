@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>보일의 법칙 (Boyle's Law) – r147 / 로컬 모듈</title>
+<title>보일의 법칙 (Boyle's Law) – UMD / 전역 THREE</title>
 <style>
   :root{ --bg:#0b1220; --panel:rgba(10,16,28,.86); --line:rgba(255,255,255,.12); --muted:#9fb0c6; }
   html,body{height:100%;margin:0;background:var(--bg);color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;overflow:hidden}
@@ -30,6 +30,28 @@
   }
   #startHint{position:fixed;left:0;right:0;bottom:26px;display:flex;justify-content:center;z-index:20}
   #startBtn{background:#1b2f52;border:1px solid var(--line);border-radius:999px;padding:10px 16px;cursor:pointer}
+  
+  #explain {
+  position:fixed;
+  left:12px; bottom:12px;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:10px 12px;
+  width:min(340px,92vw);
+  z-index:10;
+  font-size:14px;
+  line-height:1.4;
+}
+#formulaBox {
+  margin:8px 0;
+  font-size:16px;
+  font-weight:bold;
+  background:#122035;
+  border-radius:8px;
+  padding:6px 8px;
+}
+
 </style>
 </head>
 <body>
@@ -55,16 +77,34 @@
     <button class="btn" id="shake">빠른 압축</button>
     <button class="btn" id="pause">일시정지</button>
   </div>
-</div>
 
+
+</div>
+  <div id="explain">
+  <h3>보일의 법칙 설명</h3>
+  <p>온도(T)와 기체의 양(n)이 일정하다면, <b>P × V = 일정</b> 입니다.</p>
+  <p>보일의 법칙 (Boyle’s Law)
+<br/>
+정의: 온도(T)와 기체의 양(n)이 일정할 때, 압력(P)과 부피(V)의 곱은 일정하다.
+<br/>𝑃×𝑉=상수
+<br/>즉: 부피가 줄어들면 압력이 증가하고, 부피가 커지면 압력이 감소한다.
+<br/>
+실험적 의미: 기체 분자가 용기 벽에 충돌하는 횟수가 부피에 따라 달라지면서 압력이 변한다.</p>
+  <div id="formulaBox">
+    <span id="formula">P × V = k</span>
+  </div>
+  <p id="desc">부피를 줄이면 압력이 커지고, 부피를 늘리면 압력이 작아집니다.</p>
+</div>
 <div id="chart"><div class="mini">P 대 1/V (이론: P ∝ 1/V)</div><canvas id="plot"></canvas></div>
 <div id="help">슬라이더로 V, N, T를 조절하세요. V↓ → P↑, V↑ → P↓. 그래프는 즉시 반영됩니다.</div>
 <div id="startHint"><button id="startBtn">터치/클릭: 오디오 활성화</button></div>
 
-<script type="module">
-  import * as THREE from './lib/three.module.js';
-  import { OrbitControls } from './lib/jsm/OrbitControls.js';
+<!-- UMD 빌드 로드 -->
+<script src="./lib/three.min.js"></script>
+<script src="./lib/controls/OrbitControls.js"></script>
 
+<script>
+  // ===== 렌더러/씬/카메라/컨트롤 =====
   const canvas = document.getElementById('stage');
   const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -75,14 +115,14 @@
 
   const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.01, 100);
   camera.position.set(2.2, 1.6, 2.6);
-  const controls = new OrbitControls(camera, renderer.domElement);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.0));
   const dir = new THREE.DirectionalLight(0xffffff, 0.85); dir.position.set(3,4,2); scene.add(dir);
   const grid = new THREE.GridHelper(10,10, 0x335577, 0x1a2a3f); grid.position.y=-0.01; scene.add(grid);
 
-  // 피스톤-실린더
+  // ===== 피스톤-실린더 =====
   const radius=0.6, maxHeight=1.2;
   const cylGeom=new THREE.CylinderGeometry(radius,radius,maxHeight,48,1,true);
   const cylMat =new THREE.MeshPhysicalMaterial({color:0x0d2036,roughness:0.7,metalness:0,transparent:true,opacity:0.28,side:THREE.DoubleSide});
@@ -101,7 +141,7 @@
   }
   scene.add(ticks);
 
-  // 입자
+  // ===== 기체 입자 =====
   const sphereGeo=new THREE.SphereGeometry(0.015,12,12);
   const particleGroup=new THREE.Group(); scene.add(particleGroup);
   const particles=[];
@@ -117,7 +157,7 @@
     }
   }
 
-  // UI
+  // ===== UI & 상태 =====
   const $=id=>document.getElementById(id);
   const vol=$('vol'), mol=$('mol'), temp=$('temp');
   const volOut=$('volOut'), molOut=$('molOut'), tempOut=$('tempOut');
@@ -125,7 +165,7 @@
   const btnReset=$('reset'), btnShake=$('shake'), btnPause=$('pause');
   const startBtn=$('startBtn'), startHint=$('startHint');
 
-  let paused=false;
+  
   let V=parseFloat(vol.value), N=parseInt(mol.value,10), T=parseInt(temp.value,10);
   spawn(N);
 
@@ -140,7 +180,16 @@
   // 이상기체 근사: P ∝ N·T / V
   const k=1.0;
   const P=()=> k*(N*(T/298))/V;
-  function refresh(){ pBadge.textContent=`${P().toFixed(2)} kPa*`; pvBadge.textContent=(P()*V).toFixed(2); }
+ function refresh(){
+  const pressure = P();
+  pBadge.textContent = `${pressure.toFixed(2)} kPa*`;
+  pvBadge.textContent = (pressure*V).toFixed(2);
+
+  // 추가: 계산식 박스 업데이트
+  const f = document.getElementById('formula');
+  f.textContent = `${pressure.toFixed(2)} × ${V.toFixed(2)} = ${(pressure*V).toFixed(2)}`;
+}
+
   refresh();
 
   vol.addEventListener('input',e=>{ setPiston(parseFloat(e.target.value)); setTempColor(); refresh(); addChartPoint(); hiss(); });
@@ -165,6 +214,7 @@
     } requestAnimationFrame(step);
   }
 
+  // ===== 물리 tick =====
   function tick(dt){
     const sp=(T/298), h=piston.position.y, rLim=(radius*0.95);
     for(const m of particles){
@@ -179,7 +229,7 @@
     }
   }
 
-  // 그래프
+  // ===== 그래프 (P vs 1/V) =====
   const plot=document.getElementById('plot'); const ctx=plot.getContext('2d'); let data=[];
   function resizePlot(){ const dpr=Math.min(devicePixelRatio,2); plot.width=plot.clientWidth*dpr; plot.height=plot.clientHeight*dpr; draw(); }
   function resetChart(){ data=[]; addChartPoint(); }
@@ -197,10 +247,11 @@
     data.forEach((p,i)=>{ const X=px(p.x), Y=py(p.y); if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y); });
     ctx.lineWidth=2; ctx.strokeStyle='#7aa3ff'; ctx.stroke();
   }
+
   addEventListener('resize',()=>{ renderer.setSize(innerWidth,innerHeight); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); resizePlot(); });
   resizePlot(); resetChart();
 
-  // 오디오 (iOS 잠금 해제용)
+  // ===== 오디오 (선택)
   let ac, noise;
   function initAudio(){ if(ac) return; ac=new (window.AudioContext||window.webkitAudioContext)(); noise=ac.createBuffer(1, ac.sampleRate, ac.sampleRate); const ch=noise.getChannelData(0); for(let i=0;i<ch.length;i++) ch[i]=(Math.random()*2-1)*0.35; }
   function hiss(){ if(!ac) return; const s=ac.createBufferSource(); s.buffer=noise; const g=ac.createGain(); g.gain.value=0; s.connect(g).connect(ac.destination); const t=ac.currentTime; g.gain.linearRampToValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.14, t+0.04); g.gain.exponentialRampToValueAtTime(0.001, t+0.22); s.start(t); s.stop(t+0.25); }
@@ -208,8 +259,8 @@
   startBtn.addEventListener('click', async ()=>{ initAudio(); await ac?.resume(); startHint.style.display='none'; });
   addEventListener('pointerdown', ()=>{ if(!ac){ initAudio(); ac?.resume(); startHint.style.display='none'; } }, {once:true});
 
-  // 루프
-  let last=performance.now();
+  // ===== 루프 =====
+  let paused=false, last=performance.now();
   (function loop(now){
     const dt=Math.min(0.033,(now-last)/1000); last=now;
     if(!paused) tick(dt);
@@ -220,6 +271,12 @@
 
   // 초기점
   addChartPoint();
+
+  // 일시정지 토글 연결(위에서 재정의 필요)
+  document.getElementById('pause').addEventListener('click', function(){
+    paused = !paused;
+    this.textContent = paused ? '재생' : '일시정지';
+  });
 </script>
 </body>
 </html>
