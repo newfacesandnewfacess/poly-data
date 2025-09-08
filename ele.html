@@ -86,23 +86,30 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 stage.appendChild(renderer.domElement);
 
-// 라벨용 (선택사항)
-const labelRenderer = new THREE.CSS2DRenderer();
-labelRenderer.setSize(innerWidth, innerHeight);
-labelRenderer.domElement.style.position = 'fixed';
-labelRenderer.domElement.style.inset = 0;
-labelRenderer.domElement.style.pointerEvents = 'none';
-stage.appendChild(labelRenderer.domElement);
+// 라벨 렌더러 (있으면 사용, 없으면 null)
+let labelRenderer = null;
+if (THREE.CSS2DRenderer) {
+  labelRenderer = new THREE.CSS2DRenderer();
+  labelRenderer.setSize(innerWidth, innerHeight);
+  labelRenderer.domElement.style.position = 'fixed';
+  labelRenderer.domElement.style.inset = 0;
+  labelRenderer.domElement.style.pointerEvents = 'none';
+  document.getElementById('stage').appendChild(labelRenderer.domElement);
+} else {
+  console.warn('CSS2DRenderer가 없어 스프라이트 라벨로 폴백합니다.');
+}
+
 
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.target.set(0, 60, 0);
 
+// 리사이즈
 window.addEventListener('resize', ()=>{
   camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
-  labelRenderer.setSize(innerWidth, innerHeight);
+  if (labelRenderer) labelRenderer.setSize(innerWidth, innerHeight);
 });
 
 /* ====== 패널 & 그리드 ====== */
@@ -159,19 +166,53 @@ let wireMode = false;
 let firstTerminal = null;
 const wires = [];
 
+// 라벨 생성 함수 (CSS2DObject → 스프라이트 폴백)
 function makeLabel(text){
-  const div = document.createElement('div');
-  div.textContent = text;
-  div.style.padding = '2px 6px';
-  div.style.background = 'rgba(12,18,32,.8)';
-  div.style.border = '1px solid rgba(255,255,255,.14)';
-  div.style.borderRadius = '6px';
-  div.style.font = '12px ui-monospace,Consolas,monospace';
-  div.style.color = '#e9eef6';
-  const lbl = new THREE.CSS2DObject(div);
-  lbl.position.set(0, 26, 0);
-  return lbl;
+  if (THREE.CSS2DObject && labelRenderer) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    div.style.padding = '2px 6px';
+    div.style.background = 'rgba(12,18,32,.8)';
+    div.style.border = '1px solid rgba(255,255,255,.14)';
+    div.style.borderRadius = '6px';
+    div.style.font = '12px ui-monospace,Consolas,monospace';
+    div.style.color = '#e9eef6';
+    const lbl = new THREE.CSS2DObject(div);
+    lbl.position.set(0, 26, 0);
+    return lbl;
+  }
+  // --- 스프라이트 폴백 ---
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const pad = 6, fs = 14, fw = 6 * text.length + 16, fh = 24;
+  canvas.width = Math.max(64, fw);
+  canvas.height = fh;
+  ctx.fillStyle = 'rgba(12,18,32,0.85)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+  ctx.lineWidth = 2;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.strokeRect(0.5,0.5,canvas.width-1,canvas.height-1);
+  ctx.font = `${fs}px Consolas, monospace`;
+  ctx.fillStyle = '#e9eef6';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, pad, fh/2);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+  const spr = new THREE.Sprite(mat);
+  spr.scale.set(canvas.width * 0.3, canvas.height * 0.3, 1); // 크기 조절
+  spr.position.set(0, 26, 0);
+  return spr;
 }
+
+// 렌더 루프
+(function animate(){
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+  if (labelRenderer) labelRenderer.render(scene, camera);
+})();
 
 function cubeDevice({w=60,h=30,d=40,color=0x4b5d86,name,type,pins=2}){
   const geo = new THREE.BoxGeometry(w,h,d);
