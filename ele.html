@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>전동기 제어판 3D 시뮬레이터 (three.js UMD)</title>
+<style>
+  html,body{height:100%;margin:0;background:#0b1220;color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;overflow:hidden}
+  #stage{position:fixed;inset:0}
+  #ui{
+    position:fixed;left:12px;top:12px;display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;
+    background:rgba(10,16,28,.86);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px;z-index:10;max-width:min(92vw,560px)
+  }
+  .col{display:flex;flex-direction:column;gap:6px}
+  .row{display:flex;flex-wrap:wrap;gap:6px}
+  button,select{
+    background:#121a2a;color:#e9eef6;border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:8px 10px;cursor:pointer
+  }
+  button:hover{background:#17223a}
+  .tag{font:12px/1.2 ui-monospace,Consolas,monospace;color:#a7b3c9;opacity:.9}
+  #log{max-height:120px;overflow:auto;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px;width:100%}
+  #legend{
+    position:fixed;right:12px;top:12px;background:rgba(10,16,28,.86);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px;z-index:10;
+    max-width:min(92vw,340px)
+  }
+  .lamp-on{filter:drop-shadow(0 0 8px #7ee787)}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<div id="ui">
+  <div class="col" style="min-width:240px">
+    <div class="row">
+      <button data-spawn="MCCB">+ MCCB</button>
+      <button data-spawn="EOCR">+ EOCR</button>
+      <button data-spawn="MC">+ MC</button>
+      <button data-spawn="TMR">+ 타이머</button>
+      <button data-spawn="FLK">+ 플리커</button>
+      <button data-spawn="REL8">+ 8핀 릴레이</button>
+      <button data-spawn="PB">+ 누름스위치</button>
+      <button data-spawn="SEL">+ 선택스위치</button>
+      <button data-spawn="LAMP">+ 램프</button>
+      <button data-spawn="FLS">+ 플로트SW</button>
+    </div>
+    <div class="row">
+      <button id="wireModeBtn">배선 모드: OFF</button>
+      <button id="validateBtn">검증</button>
+      <button id="resetBtn">초기화</button>
+    </div>
+    <div class="tag">팁: 마우스 좌클릭+드래그로 회전(오비트), 휠로 줌, 우클릭으로 패닝. 부품은 패널 위로 드래그해 스냅 배치. 배선 모드에서 단자 두 번 클릭하면 와이어 생성.</div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<div id="legend">
+  <b>목표(예시) 제작 순서</b>
+  <ol style="margin:.4rem 0 .6rem 1rem">
+    <li>MCCB 배치</li>
+    <li>EOCR 배치</li>
+    <li>MC 배치</li>
+    <li>타이머/릴레이/스위치/램프 등</li>
+  </ol>
+  <div class="tag">※ 실제 실기 규정에 맞춰 슬롯, 간격, 단자수, 시험 로직은 프로젝트에 맞게 조정하세요.</div>
+</div>
+
+<!-- three.js (UMD) + helpers -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.155/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.155/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.155/examples/js/controls/DragControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.155/examples/js/renderers/CSS2DRenderer.js"></script>
+
+<script>
+/* ====== 기본 세팅 ====== */
+const stage = document.getElementById('stage');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b1220);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 2000);
+camera.position.set(0, 180, 380);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+stage.appendChild(renderer.domElement);
+
+// 라벨용 (선택사항)
+const labelRenderer = new THREE.CSS2DRenderer();
+labelRenderer.setSize(innerWidth, innerHeight);
+labelRenderer.domElement.style.position = 'fixed';
+labelRenderer.domElement.style.inset = 0;
+labelRenderer.domElement.style.pointerEvents = 'none';
+stage.appendChild(labelRenderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.target.set(0, 60, 0);
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  labelRenderer.setSize(innerWidth, innerHeight);
+});
+
+/* ====== 패널 & 그리드 ====== */
+const PANEL_W = 520, PANEL_H = 320, PANEL_T = 8;
+const GRID = 20; // 스냅 간격
+
+const panelGeo = new THREE.BoxGeometry(PANEL_W, PANEL_T, PANEL_H);
+const panelMat = new THREE.MeshStandardMaterial({color:0x2a3347, metalness:.2, roughness:.8});
+const panel = new THREE.Mesh(panelGeo, panelMat);
+panel.position.set(0, 0, 0);
+panel.castShadow = false; panel.receiveShadow = true;
+scene.add(panel);
+
+// 그리드 가이드 (얇은 라인)
+const gridHelper = new THREE.GridHelper(PANEL_W, PANEL_W/GRID, 0x384763, 0x1f2941);
+gridHelper.rotation.x = Math.PI/2;
+gridHelper.position.y = PANEL_T/2 + 0.1;
+scene.add(gridHelper);
+
+// 슬롯(순서 평가용 예시) — 상단 4칸
+const slots = [];
+const SLOT_COUNT = 4;
+for(let i=0;i<SLOT_COUNT;i++){
+  const g = new THREE.BoxGeometry(PANEL_W/SLOT_COUNT-6, 1, 60);
+  const m = new THREE.MeshBasicMaterial({color:0x2d3b57, transparent:true, opacity:.28});
+  const mesh = new THREE.Mesh(g, m);
+  mesh.position.set(-PANEL_W/2 + (i+0.5)*(PANEL_W/SLOT_COUNT), PANEL_T/2 + 0.6, -PANEL_H/2 + 40);
+  mesh.userData.slotIndex = i;
+  scene.add(mesh);
+  slots.push(mesh);
+}
+
+/* ====== 광원 ====== */
+const amb = new THREE.AmbientLight(0xffffff, .55);
+scene.add(amb);
+const dir = new THREE.DirectionalLight(0xffffff, .8);
+dir.position.set(200, 300, 200);
+dir.castShadow = true;
+scene.add(dir);
+
+/* ====== 상태/로깅 ====== */
+const logEl = document.getElementById('log');
+function log(msg){ logEl.innerHTML = (msg+'<br>') + logEl.innerHTML; }
+
+/* ====== 부품 팩토리 ======
+   단자(terminal) 정보를 userData.terminals에 기록해
+   배선 모드에서 클릭으로 와이어 생성이 가능하도록 함.
+*/
+const DRAGGABLES = [];
+const CLICKABLE_TERMINALS = [];
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let wireMode = false;
+let firstTerminal = null;
+const wires = [];
+
+function makeLabel(text){
+  const div = document.createElement('div');
+  div.textContent = text;
+  div.style.padding = '2px 6px';
+  div.style.background = 'rgba(12,18,32,.8)';
+  div.style.border = '1px solid rgba(255,255,255,.14)';
+  div.style.borderRadius = '6px';
+  div.style.font = '12px ui-monospace,Consolas,monospace';
+  div.style.color = '#e9eef6';
+  const lbl = new THREE.CSS2DObject(div);
+  lbl.position.set(0, 26, 0);
+  return lbl;
+}
+
+function cubeDevice({w=60,h=30,d=40,color=0x4b5d86,name,type,pins=2}){
+  const geo = new THREE.BoxGeometry(w,h,d);
+  const mat = new THREE.MeshStandardMaterial({color, metalness:.2, roughness:.7});
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(0, PANEL_T/2 + h/2 + 1, 0);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  mesh.userData = {name,type, terminals:[], placed:false};
+
+  // 라벨
+  mesh.add(makeLabel(name));
+
+  // 단자 구슬 생성(상단 후면)
+  for(let i=0;i<pins;i++){
+    const s = new THREE.SphereGeometry(3.5, 16, 16);
+    const sm = new THREE.MeshStandardMaterial({color:0x9fb7ff, emissive:0x0, roughness:.5, metalness:.1});
+    const ball = new THREE.Mesh(s, sm);
+    const gap = (pins-1)*10;
+    ball.position.set(-gap/2 + i*10, h/2+2, -d/2+2); // 윗면 뒤쪽
+    ball.userData = {owner:mesh, kind:'terminal'};
+    mesh.add(ball);
+    CLICKABLE_TERMINALS.push(ball);
+    mesh.userData.terminals.push(ball);
+  }
+  return mesh;
+}
+
+function spawn(type){
+  let dev;
+  if(type==='MCCB') dev = cubeDevice({w:70,h:36,d:46,color:0x5f75a8,name:'MCCB',type:'MCCB',pins:2});
+  else if(type==='EOCR') dev = cubeDevice({w:64,h:32,d:44,color:0x6a8f8d,name:'EOCR',type:'EOCR',pins:3});
+  else if(type==='MC') dev = cubeDevice({w:70,h:40,d:46,color:0x7a6fb0,name:'MC',type:'MC',pins:4});
+  else if(type==='TMR') dev = cubeDevice({w:56,h:30,d:40,color:0x7c8ca8,name:'TMR',type:'TMR',pins:2});
+  else if(type==='FLK') dev = cubeDevice({w:56,h:30,d:40,color:0x8b6b6b,name:'FLK',type:'FLK',pins:2});
+  else if(type==='REL8') dev = cubeDevice({w:56,h:30,d:40,color:0x8a9f69,name:'REL-8',type:'REL8',pins:2});
+  else if(type==='PB') dev = cubeDevice({w:40,h:26,d:36,color:0x9d6f6f,name:'PB',type:'PB',pins:2});
+  else if(type==='SEL') dev = cubeDevice({w:44,h:26,d:36,color:0x9a8f6b,name:'SEL',type:'SEL',pins:2});
+  else if(type==='FLS') dev = cubeDevice({w:48,h:28,d:36,color:0x6f8f9d,name:'FLS',type:'FLS',pins:2});
+  else if(type==='LAMP'){
+    const g = new THREE.SphereGeometry(18, 24, 24);
+    const m = new THREE.MeshStandardMaterial({color:0x4fa86b, emissive:0x003300, emissiveIntensity:.6, roughness:.3, metalness:.2});
+    dev = new THREE.Mesh(g, m);
+    dev.position.set(0, PANEL_T/2 + 18 + 1, 0);
+    dev.userData = {name:'LAMP', type:'LAMP', terminals:[], placed:false, lamp:true, lit:false};
+    dev.add(makeLabel('LAMP'));
+    // 단자 2개 (밑면)
+    for(let i=0;i<2;i++){
+      const s = new THREE.SphereGeometry(3.5, 16, 16);
+      const sm = new THREE.MeshStandardMaterial({color:0x9fb7ff});
+      const ball = new THREE.Mesh(s, sm);
+      ball.position.set(-5 + i*10, -18, 0);
+      ball.userData = {owner:dev, kind:'terminal'};
+      dev.add(ball);
+      CLICKABLE_TERMINALS.push(ball);
+      dev.userData.terminals.push(ball);
+    }
+  } else {
+    return;
+  }
+  DRAGGABLES.push(dev);
+  scene.add(dev);
+  log(`${type} 생성`);
+}
+
+/* ====== 드래그(스냅 포함) ====== */
+let dragControls = new THREE.DragControls(DRAGGABLES, camera, renderer.domElement);
+dragControls.addEventListener('dragstart', (e)=>{
+  controls.enabled = false;
+});
+dragControls.addEventListener('drag', (e)=>{
+  // 패널 높이에 고정
+  const obj = e.object;
+  obj.position.y = PANEL_T/2 + (obj.geometry.boundingBox?.max.y || 15);
+});
+dragControls.addEventListener('dragend', (e)=>{
+  controls.enabled = true;
+  const o = e.object;
+
+  // 패널 영역 안으로 투영/스냅
+  const halfZ = PANEL_H/2 - 8, halfX = PANEL_W/2 - 8;
+  o.position.x = Math.max(-halfX, Math.min(halfX, Math.round(o.position.x/GRID)*GRID));
+  o.position.z = Math.max(-halfZ, Math.min(halfZ, Math.round(o.position.z/GRID)*GRID));
+
+  // 슬롯 위에 놓였는지 하이라이트(순서 평가)
+  let slotted = false;
+  for(const s of slots){
+    const dx = Math.abs(o.position.x - s.position.x);
+    const dz = Math.abs(o.position.z - s.position.z);
+    if(dx < (PANEL_W/SLOT_COUNT)/2 && dz < 40){
+      s.material.opacity = .42;
+      o.userData.placed = true;
+      o.userData.slotIndex = s.userData.slotIndex;
+      slotted = true;
+      break;
+    }
+  }
+  if(!slotted){ o.userData.slotIndex = undefined; }
+});
+
+/* ====== 배선(와이어) ====== */
+const wireMat = new THREE.LineBasicMaterial({color:0x87a6ff, linewidth:2});
+function addWire(a, b){
+  const pts = [a.getWorldPosition(new THREE.Vector3()), b.getWorldPosition(new THREE.Vector3())];
+  // 약간의 여유 베지어(간단히 폴리라인 3점)
+  const mid = pts[0].clone().add(pts[1]).multiplyScalar(.5);
+  mid.y += 20;
+  const geom = new THREE.BufferGeometry().setFromPoints([pts[0], mid, pts[1]]);
+  const line = new THREE.Line(geom, wireMat);
+  scene.add(line);
+  wires.push({line, a, b});
+  log(`배선 연결: ${a.userData.owner.userData.name} ↔ ${b.userData.owner.userData.name}`);
+}
+
+function onPointerDown(ev){
+  if(!wireMode) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((ev.clientX - rect.left)/rect.width) * 2 - 1;
+  pointer.y = -((ev.clientY - rect.top)/rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const inter = raycaster.intersectObjects(CLICKABLE_TERMINALS, true)[0];
+  if(!inter) return;
+  const t = inter.object;
+  if(!firstTerminal){
+    firstTerminal = t;
+    t.material.emissive = new THREE.Color(0x2244ff);
+    t.material.emissiveIntensity = .7;
+  } else {
+    if(firstTerminal !== t){
+      addWire(firstTerminal, t);
+    }
+    // reset highlight
+    firstTerminal.material.emissiveIntensity = 0;
+    firstTerminal = null;
+  }
+}
+renderer.domElement.addEventListener('pointerdown', onPointerDown);
+
+/* ====== 간단 검증 로직(예시) ======
+   1) 슬롯 0: MCCB, 1: EOCR, 2: MC 가 올라가 있으면 "순서 OK"
+   2) 램프 단자 중 하나가 MC의 단자와 연결되어 있으면 램프 켜기
+   ※ 실제 시험 로직에 맞춰 강화 가능(코일/보조접점/자기유지 등)
+*/
+function validate(){
+  const placed = DRAGGABLES.filter(o=>o.userData.placed);
+  const bySlot = {};
+  placed.forEach(o=>{ if(o.userData.slotIndex!=null) bySlot[o.userData.slotIndex]=o; });
+
+  let orderOK = (bySlot[0]?.userData.type==='MCCB' &&
+                 bySlot[1]?.userData.type==='EOCR' &&
+                 bySlot[2]?.userData.type==='MC');
+
+  log(orderOK ? '제작 순서: OK' : '제작 순서: 잘못됨 (예: 0=MCCB,1=EOCR,2=MC)');
+
+  // 램프 점등 조건(간단 예시): LAMP 단자 중 하나가 MC 단자와 연결되어 있으면 ON
+  let lampLit = false;
+  const lamps = DRAGGABLES.filter(o=>o.userData.type==='LAMP');
+  const mcs = DRAGGABLES.filter(o=>o.userData.type==='MC');
+  for(const w of wires){
+    const aOwner = w.a.userData.owner, bOwner = w.b.userData.owner;
+    if((aOwner.userData.type==='LAMP' && bOwner.userData.type==='MC') ||
+       (bOwner.userData.type==='LAMP' && aOwner.userData.type==='MC')){
+      lampLit = true; break;
+    }
+  }
+  lamps.forEach(l=>{
+    l.userData.lit = lampLit;
+    l.material.emissive = new THREE.Color(lampLit?0x1aa64a:0x003300);
+    l.material.emissiveIntensity = lampLit?.9:.6;
+    l.children.forEach(ch=>{
+      if(ch instanceof THREE.CSS2DObject){
+        ch.element.classList.toggle('lamp-on', lampLit);
+      }
+    });
+  });
+
+  if(lampLit) log('상태: MC-램프 연결 감지 → 램프 ON (예시 규칙)');
+}
+
+document.getElementById('validateBtn').addEventListener('click', validate);
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  // 씬 정리
+  for(const w of wires){ scene.remove(w.line); }
+  wires.length = 0;
+  for(const o of DRAGGABLES){ scene.remove(o); }
+  DRAGGABLES.length = 0;
+  CLICKABLE_TERMINALS.length = 0;
+  firstTerminal = null;
+  log('초기화 완료');
+});
+
+const wireBtn = document.getElementById('wireModeBtn');
+wireBtn.addEventListener('click', ()=>{
+  wireMode = !wireMode;
+  wireBtn.textContent = '배선 모드: ' + (wireMode?'ON':'OFF');
+  log('배선 모드 ' + (wireMode?'활성화':'비활성화'));
+});
+
+/* ====== UI: 스폰 ====== */
+document.querySelectorAll('[data-spawn]').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    spawn(b.dataset.spawn);
+    // DragControls 갱신(새 부품 반영)
+    dragControls.deactivate();
+    dragControls.dispose();
+    dragControls = new THREE.DragControls(DRAGGABLES, camera, renderer.domElement);
+    dragControls.addEventListener('dragstart', ()=> controls.enabled=false);
+    dragControls.addEventListener('dragend', ()=> controls.enabled=true);
+  });
+});
+
+/* ====== 루프 ====== */
+(function animate(){
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+})();
+log('시뮬레이터 로드 완료');
+</script>
+</body>
+</html>
