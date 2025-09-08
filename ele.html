@@ -3,25 +3,23 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>전동기 제어판 3D 시뮬레이터 (three.js UMD)</title>
+<title>전동기 제어판 3D 시뮬레이터 (정면·XY · 맨해튼 와이어 · 겹침방지)</title>
 <style>
-  html,body{height:100%;margin:0;background:#0b1220;color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;overflow:hidden}
+  html,body{height:100%;margin:0;background:#000;color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;overflow:hidden}
   #stage{position:fixed;inset:0}
   #ui{
     position:fixed;left:12px;top:12px;display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;
-    background:rgba(10,16,28,.86);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px;z-index:10;max-width:min(92vw,560px)
+    background:rgba(10,16,28,.86);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px;z-index:10;max-width:min(92vw,660px)
   }
   .col{display:flex;flex-direction:column;gap:6px}
   .row{display:flex;flex-wrap:wrap;gap:6px}
-  button,select{
-    background:#121a2a;color:#e9eef6;border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:8px 10px;cursor:pointer
-  }
+  button{background:#121a2a;color:#e9eef6;border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:8px 10px;cursor:pointer}
   button:hover{background:#17223a}
   .tag{font:12px/1.2 ui-monospace,Consolas,monospace;color:#a7b3c9;opacity:.9}
-  #log{max-height:120px;overflow:auto;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px;width:100%}
+  #log{max-height:140px;overflow:auto;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px;width:100%}
   #legend{
     position:fixed;right:12px;top:12px;background:rgba(10,16,28,.86);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px;z-index:10;
-    max-width:min(92vw,340px)
+    max-width:min(92vw,360px)
   }
   .lamp-on{filter:drop-shadow(0 0 8px #7ee787)}
 </style>
@@ -30,7 +28,7 @@
 <div id="stage"></div>
 
 <div id="ui">
-  <div class="col" style="min-width:240px">
+  <div class="col" style="min-width:280px">
     <div class="row">
       <button data-spawn="MCCB">+ MCCB</button>
       <button data-spawn="EOCR">+ EOCR</button>
@@ -47,8 +45,9 @@
       <button id="wireModeBtn">배선 모드: OFF</button>
       <button id="validateBtn">검증</button>
       <button id="resetBtn">초기화</button>
+      <button id="toggleGuidesBtn">보조선 숨김</button>
     </div>
-    <div class="tag">팁: 마우스 좌클릭+드래그로 회전(오비트), 휠로 줌, 우클릭으로 패닝. 부품은 패널 위로 드래그해 스냅 배치. 배선 모드에서 단자 두 번 클릭하면 와이어 생성.</div>
+    <div class="tag">좌클릭: 모듈 XY 드래그 · 우클릭 드래그: 카메라 XY 패닝 · 휠: 줌 · 배선모드: 좌클릭(직각 꺾기/연결), 우클릭(취소)</div>
     <div id="log"></div>
   </div>
 </div>
@@ -56,37 +55,34 @@
 <div id="legend">
   <b>목표(예시) 제작 순서</b>
   <ol style="margin:.4rem 0 .6rem 1rem">
-    <li>MCCB 배치</li>
-    <li>EOCR 배치</li>
-    <li>MC 배치</li>
-    <li>타이머/릴레이/스위치/램프 등</li>
+    <li>MCCB</li><li>EOCR</li><li>MC</li><li>타이머/릴레이/스위치/램프</li>
   </ol>
-  <div class="tag">※ 실제 실기 규정에 맞춰 슬롯, 간격, 단자수, 시험 로직은 프로젝트에 맞게 조정하세요.</div>
+  <div class="tag">※ 실제 규격/단자/채점 로직은 과제에 맞게 조정하세요.</div>
 </div>
 
-<!-- three.js (UMD) + helpers -->
+<!-- three.js (UMD) + helpers (당신의 경로 그대로 사용) -->
 <script src="./lib/three.min.js"></script>
 <script src="./lib/controls/OrbitControls.js"></script>
 <script src="./lib/155/DragControls.js"></script>
 <script src="./lib/renderers/CSS2DRenderer.js"></script>
 
-
-
 <script>
 /* ====== 기본 세팅 ====== */
 const stage = document.getElementById('stage');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0b1220);
+scene.background = new THREE.Color(0x000000); // 배경(벽) 검정
 
-const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 2000);
-camera.position.set(0, 180, 380);
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 3000);
+camera.position.set(0, 0, 700);
+camera.lookAt(0, 0, 0);
+camera.up.set(0,1,0);
 
 const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 stage.appendChild(renderer.domElement);
 
-// 라벨 렌더러 (있으면 사용, 없으면 null)
+// 라벨 렌더러
 let labelRenderer = null;
 if (THREE.CSS2DRenderer) {
   labelRenderer = new THREE.CSS2DRenderer();
@@ -94,17 +90,9 @@ if (THREE.CSS2DRenderer) {
   labelRenderer.domElement.style.position = 'fixed';
   labelRenderer.domElement.style.inset = 0;
   labelRenderer.domElement.style.pointerEvents = 'none';
-  document.getElementById('stage').appendChild(labelRenderer.domElement);
-} else {
-  console.warn('CSS2DRenderer가 없어 스프라이트 라벨로 폴백합니다.');
+  stage.appendChild(labelRenderer.domElement);
 }
 
-
-const controls = new THREE.OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.target.set(0, 60, 0);
-
-// 리사이즈
 window.addEventListener('resize', ()=>{
   camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
@@ -112,323 +100,629 @@ window.addEventListener('resize', ()=>{
   if (labelRenderer) labelRenderer.setSize(innerWidth, innerHeight);
 });
 
-/* ====== 패널 & 그리드 ====== */
+/* ====== 패널/그리드/좌표 ====== */
 const PANEL_W = 520, PANEL_H = 320, PANEL_T = 8;
-const GRID = 20; // 스냅 간격
+const GRID = 20;
+const WIRE_SNAP = GRID/2;          // ← 와이어 스냅 간격 = 그리드 절반
+const snapRound = (v,s)=> Math.round(v/s)*s;
 
-const panelGeo = new THREE.BoxGeometry(PANEL_W, PANEL_T, PANEL_H);
-const panelMat = new THREE.MeshStandardMaterial({color:0x2a3347, metalness:.2, roughness:.8});
-const panel = new THREE.Mesh(panelGeo, panelMat);
-panel.position.set(0, 0, 0);
-panel.castShadow = false; panel.receiveShadow = true;
+// Z 기준면
+const Z_PANEL      = 0;
+const Z_DEVICE     = PANEL_T/2 + 4;
+const Z_TERM_LOCAL = 32;                       // 단자 앞으로
+const Z_WIRE       = Z_DEVICE + Z_TERM_LOCAL + 4; // 와이어 전용 상부 평면
+
+// 패널(밝은 회색 = 모듈과 대비)
+const panel = new THREE.Mesh(
+  new THREE.BoxGeometry(PANEL_W, PANEL_H, PANEL_T),
+  new THREE.MeshStandardMaterial({color:0x1a1a1a, metalness:.05, roughness:.95})
+);
+panel.position.set(0, 0, Z_PANEL);
+panel.receiveShadow = true;
 scene.add(panel);
 
-// 그리드 가이드 (얇은 라인)
-const gridHelper = new THREE.GridHelper(PANEL_W, PANEL_W/GRID, 0x384763, 0x1f2941);
+// 그리드
+const gridHelper = new THREE.GridHelper(PANEL_W, PANEL_W/GRID, 0x8b98ad, 0x95a1b4);
+// 그리드 반투명(현재의 절반)으로
+if (Array.isArray(gridHelper.material)){
+  gridHelper.material.forEach(m => { m.transparent = true; m.opacity = 0.5 * (m.opacity ?? 1); });
+} else {
+  gridHelper.material.transparent = true;
+  gridHelper.material.opacity = 0.5 * (gridHelper.material.opacity ?? 1);
+}
 gridHelper.rotation.x = Math.PI/2;
-gridHelper.position.y = PANEL_T/2 + 0.1;
+gridHelper.position.z = PANEL_T/2 + 0.2;
 scene.add(gridHelper);
 
-// 슬롯(순서 평가용 예시) — 상단 4칸
+// 슬롯
 const slots = [];
 const SLOT_COUNT = 4;
 for(let i=0;i<SLOT_COUNT;i++){
-  const g = new THREE.BoxGeometry(PANEL_W/SLOT_COUNT-6, 1, 60);
-  const m = new THREE.MeshBasicMaterial({color:0x2d3b57, transparent:true, opacity:.28});
-  const mesh = new THREE.Mesh(g, m);
-  mesh.position.set(-PANEL_W/2 + (i+0.5)*(PANEL_W/SLOT_COUNT), PANEL_T/2 + 0.6, -PANEL_H/2 + 40);
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(PANEL_W/SLOT_COUNT-6, 60, 1.2),
+    new THREE.MeshBasicMaterial({color:0x99a3b3, transparent:true, opacity:.30})
+  );
+  mesh.position.set(-PANEL_W/2 + (i+0.5)*(PANEL_W/SLOT_COUNT), +PANEL_H/2 - 40, PANEL_T/2 + 0.6);
   mesh.userData.slotIndex = i;
   scene.add(mesh);
   slots.push(mesh);
 }
 
-/* ====== 광원 ====== */
-const amb = new THREE.AmbientLight(0xffffff, .55);
-scene.add(amb);
-const dir = new THREE.DirectionalLight(0xffffff, .8);
-dir.position.set(200, 300, 200);
-dir.castShadow = true;
+/* ====== XY 축 ====== */
+const axesXY = new THREE.Group();
+(function(){
+  const ori = new THREE.Vector3(-PANEL_W/2+24, -PANEL_H/2+24, PANEL_T/2 + 1);
+  const axX = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), ori, 60, 0xdd3344, 8, 4);
+  const axY = new THREE.ArrowHelper(new THREE.Vector3(0,1,0), ori, 60, 0x33dd77, 8, 4);
+  axesXY.add(axX, axY);
+  const lx = makeLabel('X'); lx.position.copy(ori).x += 68; lx.position.z += 2; axesXY.add(lx);
+  const ly = makeLabel('Y'); ly.position.copy(ori).y += 68; ly.position.z += 2; axesXY.add(ly);
+})();
+scene.add(axesXY);
+
+/* ====== 조명 ====== */
+scene.add(new THREE.AmbientLight(0xffffff, .75));
+const dir = new THREE.DirectionalLight(0xffffff, .9);
+dir.position.set(200, 250, 500);
 scene.add(dir);
 
-/* ====== 상태/로깅 ====== */
+/* ====== 상태 ====== */
 const logEl = document.getElementById('log');
 function log(msg){ logEl.innerHTML = (msg+'<br>') + logEl.innerHTML; }
-
-/* ====== 부품 팩토리 ======
-   단자(terminal) 정보를 userData.terminals에 기록해
-   배선 모드에서 클릭으로 와이어 생성이 가능하도록 함.
-*/
 const DRAGGABLES = [];
 const CLICKABLE_TERMINALS = [];
+const wires = [];
+let wireMode = false;
+
+let buildingWire = null; // { startT, points:[V3...], tempLine }
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
-let wireMode = false;
-let firstTerminal = null;
-const wires = [];
 
-// 라벨 생성 함수 (CSS2DObject → 스프라이트 폴백)
+/* ====== 카메라: XY 패닝(우클릭) + 휠 줌 ====== */
+let camTarget = new THREE.Vector3(0, 0, 0);
+let camPan = { active:false, startWorld:null, pointerId:null };
+
+renderer.domElement.addEventListener('contextmenu', (ev)=> ev.preventDefault());
+renderer.domElement.addEventListener('wheel', (ev)=>{
+  ev.preventDefault();
+  const factor = (ev.deltaY < 0) ? 1.1 : 0.9;
+  camera.zoom = THREE.MathUtils.clamp(camera.zoom * factor, 0.6, 3.0);
+  camera.updateProjectionMatrix();
+}, { passive:false });
+
+/* ====== 라벨 ====== */
 function makeLabel(text){
-  if (THREE.CSS2DObject && labelRenderer) {
+  if (THREE.CSS2DRenderer && THREE.CSS2DObject && labelRenderer) {
     const div = document.createElement('div');
     div.textContent = text;
-    div.style.padding = '2px 6px';
-    div.style.background = 'rgba(12,18,32,.8)';
-    div.style.border = '1px solid rgba(255,255,255,.14)';
-    div.style.borderRadius = '6px';
-    div.style.font = '12px ui-monospace,Consolas,monospace';
-    div.style.color = '#e9eef6';
-    const lbl = new THREE.CSS2DObject(div);
-    lbl.position.set(0, 26, 0);
-    return lbl;
+    div.style.padding = '2px 6px'; div.style.background = 'rgba(12,18,32,.9)';
+    div.style.border = '1px solid rgba(255,255,255,.14)'; div.style.borderRadius = '6px';
+    div.style.font = '12px ui-monospace,Consolas,monospace'; div.style.color = '#e9eef6';
+    return new THREE.CSS2DObject(div);
   }
-  // --- 스프라이트 폴백 ---
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  const pad = 6, fs = 14, fw = 6 * text.length + 16, fh = 24;
-  canvas.width = Math.max(64, fw);
-  canvas.height = fh;
-  ctx.fillStyle = 'rgba(12,18,32,0.85)';
-  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
-  ctx.lineWidth = 2;
-  ctx.fillRect(0,0,canvas.width,canvas.height);
-  ctx.strokeRect(0.5,0.5,canvas.width-1,canvas.height-1);
-  ctx.font = `${fs}px Consolas, monospace`;
-  ctx.fillStyle = '#e9eef6';
-  ctx.textBaseline = 'middle';
+  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
+  const fs = 14, pad = 6, fw = 6 * text.length + 16, fh = 24;
+  canvas.width = Math.max(64, fw); canvas.height = fh;
+  ctx.fillStyle = 'rgba(12,18,32,0.9)'; ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = 2;
+  ctx.fillRect(0,0,canvas.width,canvas.height); ctx.strokeRect(0.5,0.5,canvas.width-1,canvas.height-1);
+  ctx.font = `${fs}px Consolas, monospace`; ctx.fillStyle = '#e9eef6'; ctx.textBaseline = 'middle';
   ctx.fillText(text, pad, fh/2);
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.minFilter = THREE.LinearFilter;
-  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
-  const spr = new THREE.Sprite(mat);
-  spr.scale.set(canvas.width * 0.3, canvas.height * 0.3, 1); // 크기 조절
-  spr.position.set(0, 26, 0);
+  const tex = new THREE.CanvasTexture(canvas); tex.minFilter = THREE.LinearFilter;
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+  spr.scale.set(canvas.width * 0.3, canvas.height * 0.3, 1);
   return spr;
 }
-
-// 렌더 루프
-(function animate(){
-  requestAnimationFrame(animate);
-  controls.update();
-  renderer.render(scene, camera);
-  if (labelRenderer) labelRenderer.render(scene, camera);
-})();
-
-function cubeDevice({w=60,h=30,d=40,color=0x4b5d86,name,type,pins=2}){
-  const geo = new THREE.BoxGeometry(w,h,d);
-  const mat = new THREE.MeshStandardMaterial({color, metalness:.2, roughness:.7});
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(0, PANEL_T/2 + h/2 + 1, 0);
-  mesh.castShadow = true; mesh.receiveShadow = true;
-  mesh.userData = {name,type, terminals:[], placed:false};
-
-  // 라벨
-  mesh.add(makeLabel(name));
-
-  // 단자 구슬 생성(상단 후면)
-  for(let i=0;i<pins;i++){
-    const s = new THREE.SphereGeometry(3.5, 16, 16);
-    const sm = new THREE.MeshStandardMaterial({color:0x9fb7ff, emissive:0x0, roughness:.5, metalness:.1});
-    const ball = new THREE.Mesh(s, sm);
-    const gap = (pins-1)*10;
-    ball.position.set(-gap/2 + i*10, h/2+2, -d/2+2); // 윗면 뒤쪽
-    ball.userData = {owner:mesh, kind:'terminal'};
-    mesh.add(ball);
-    CLICKABLE_TERMINALS.push(ball);
-    mesh.userData.terminals.push(ball);
-  }
-  return mesh;
+function addAutoLabel(obj, text){
+  const l = makeLabel(text);
+  const terms = obj.userData.terminals || [];
+  let avgY = 0;
+  if (terms.length) avgY = terms.reduce((s,t)=> s + t.position.y, 0) / terms.length;
+  const OFFSET = 28;
+  l.position.y += (avgY > 0 ? -OFFSET : +OFFSET); // 단자와 반대쪽에 배치
+  l.position.z += 2;
+  obj.add(l);
 }
 
-function spawn(type){
-  let dev;
-  if(type==='MCCB') dev = cubeDevice({w:70,h:36,d:46,color:0x5f75a8,name:'MCCB',type:'MCCB',pins:2});
-  else if(type==='EOCR') dev = cubeDevice({w:64,h:32,d:44,color:0x6a8f8d,name:'EOCR',type:'EOCR',pins:3});
-  else if(type==='MC') dev = cubeDevice({w:70,h:40,d:46,color:0x7a6fb0,name:'MC',type:'MC',pins:4});
-  else if(type==='TMR') dev = cubeDevice({w:56,h:30,d:40,color:0x7c8ca8,name:'TMR',type:'TMR',pins:2});
-  else if(type==='FLK') dev = cubeDevice({w:56,h:30,d:40,color:0x8b6b6b,name:'FLK',type:'FLK',pins:2});
-  else if(type==='REL8') dev = cubeDevice({w:56,h:30,d:40,color:0x8a9f69,name:'REL-8',type:'REL8',pins:2});
-  else if(type==='PB') dev = cubeDevice({w:40,h:26,d:36,color:0x9d6f6f,name:'PB',type:'PB',pins:2});
-  else if(type==='SEL') dev = cubeDevice({w:44,h:26,d:36,color:0x9a8f6b,name:'SEL',type:'SEL',pins:2});
-  else if(type==='FLS') dev = cubeDevice({w:48,h:28,d:36,color:0x6f8f9d,name:'FLS',type:'FLS',pins:2});
-  else if(type==='LAMP'){
-    const g = new THREE.SphereGeometry(18, 24, 24);
-    const m = new THREE.MeshStandardMaterial({color:0x4fa86b, emissive:0x003300, emissiveIntensity:.6, roughness:.3, metalness:.2});
-    dev = new THREE.Mesh(g, m);
-    dev.position.set(0, PANEL_T/2 + 18 + 1, 0);
-    dev.userData = {name:'LAMP', type:'LAMP', terminals:[], placed:false, lamp:true, lit:false};
-    dev.add(makeLabel('LAMP'));
-    // 단자 2개 (밑면)
-    for(let i=0;i<2;i++){
-      const s = new THREE.SphereGeometry(3.5, 16, 16);
-      const sm = new THREE.MeshStandardMaterial({color:0x9fb7ff});
-      const ball = new THREE.Mesh(s, sm);
-      ball.position.set(-5 + i*10, -18, 0);
-      ball.userData = {owner:dev, kind:'terminal'};
-      dev.add(ball);
-      CLICKABLE_TERMINALS.push(ball);
-      dev.userData.terminals.push(ball);
-    }
-  } else {
-    return;
-  }
-  DRAGGABLES.push(dev);
-  scene.add(dev);
-  log(`${type} 생성`);
+/* ====== 유틸 ====== */
+function ndcFromEvent(ev){ const r = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((ev.clientX - r.left)/r.width) * 2 - 1; pointer.y = -((ev.clientY - r.top)/r.height) * 2 + 1; }
+// 교체: pointOnZ(z) → pointOnZ(z, snap=GRID)
+function pointOnZ(z, snap = GRID){
+  raycaster.setFromCamera(pointer, camera);
+  const plane = new THREE.Plane(new THREE.Vector3(0,0,1), -z);
+  const v = new THREE.Vector3(); if (!raycaster.ray.intersectPlane(plane, v)) return null;
+  const halfX = PANEL_W/2 - 8, halfY = PANEL_H/2 - 8;
+  v.x = THREE.MathUtils.clamp(snapRound(v.x, snap), -halfX, halfX);
+  v.y = THREE.MathUtils.clamp(snapRound(v.y, snap), -halfY, halfY);
+  v.z = z; 
+  return v;
 }
-
-/* ====== 드래그(스냅 포함) ====== */
-let dragControls = new THREE.DragControls(DRAGGABLES, camera, renderer.domElement);
-dragControls.addEventListener('dragstart', (e)=>{
-  controls.enabled = false;
-});
-dragControls.addEventListener('drag', (e)=>{
-  // 패널 높이에 고정
-  const obj = e.object;
-  obj.position.y = PANEL_T/2 + (obj.geometry.boundingBox?.max.y || 15);
-});
-dragControls.addEventListener('dragend', (e)=>{
-  controls.enabled = true;
-  const o = e.object;
-
-  // 패널 영역 안으로 투영/스냅
-  const halfZ = PANEL_H/2 - 8, halfX = PANEL_W/2 - 8;
-  o.position.x = Math.max(-halfX, Math.min(halfX, Math.round(o.position.x/GRID)*GRID));
-  o.position.z = Math.max(-halfZ, Math.min(halfZ, Math.round(o.position.z/GRID)*GRID));
-
-  // 슬롯 위에 놓였는지 하이라이트(순서 평가)
-  let slotted = false;
+function getTopDraggable(obj){ let o=obj; while (o && !DRAGGABLES.includes(o)) o=o.parent; return o||obj; }
+function slotCheck(o){
+  let slotted=false;
   for(const s of slots){
-    const dx = Math.abs(o.position.x - s.position.x);
-    const dz = Math.abs(o.position.z - s.position.z);
-    if(dx < (PANEL_W/SLOT_COUNT)/2 && dz < 40){
+    const dx=Math.abs(o.position.x - s.position.x), dy=Math.abs(o.position.y - s.position.y);
+    if(dx < (PANEL_W/SLOT_COUNT)/2 && dy < 30){
       s.material.opacity = .42;
       o.userData.placed = true;
       o.userData.slotIndex = s.userData.slotIndex;
-      slotted = true;
-      break;
+      slotted = true; break;
     }
   }
-  if(!slotted){ o.userData.slotIndex = undefined; }
+  if(!slotted) o.userData.slotIndex = undefined;
+}
+
+/* ====== 충돌(겹침) 방지 ====== */
+function computeSizeXY(g){
+  g.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  const tmp = new THREE.Box3();
+  const vmin = new THREE.Vector3(), vmax = new THREE.Vector3();
+  g.traverse(n=>{
+    if (n.isMesh){
+      if (!n.geometry.boundingBox) n.geometry.computeBoundingBox();
+      tmp.copy(n.geometry.boundingBox).applyMatrix4(n.matrixWorld);
+      vmin.set(tmp.min.x, tmp.min.y, 0); vmax.set(tmp.max.x, tmp.max.y, 0);
+      box.expandByPoint(vmin); box.expandByPoint(vmax);
+    }
+  });
+  const size = new THREE.Vector3(); box.getSize(size);
+  g.userData.sizeXY = [size.x, size.y];
+}
+function isOverlapping(obj, testX, testY){
+  const [w1,h1] = obj.userData.sizeXY || [0,0];
+  for (const o of DRAGGABLES){
+    if (o===obj) continue;
+    const [w2,h2] = o.userData.sizeXY || [0,0];
+    const dx = Math.abs(testX - o.position.x), dy = Math.abs(testY - o.position.y);
+    if (dx < (w1+w2)/2 + 2 && dy < (h1+h2)/2 + 2) return true;
+  }
+  return false;
+}
+function placeWithoutOverlap(dev){
+  // 중앙 → 주변 그리드 순회
+  const candidates = [];
+  const steps = 8;
+  for (let r=0; r<=steps; r++){
+    candidates.push([0,0]);
+    candidates.push([ r*GRID, 0],[ -r*GRID, 0],[0, r*GRID],[0,-r*GRID],
+                    [ r*GRID, r*GRID],[-r*GRID, r*GRID],[ r*GRID,-r*GRID],[-r*GRID,-r*GRID]);
+  }
+  for (const [cx,cy] of candidates){
+    const x = THREE.MathUtils.clamp(Math.round(cx/GRID)*GRID, -PANEL_W/2+20, PANEL_W/2-20);
+    const y = THREE.MathUtils.clamp(Math.round(cy/GRID)*GRID, -PANEL_H/2+20, PANEL_H/2-20);
+    if (!isOverlapping(dev, x, y)){ dev.position.set(x,y,Z_DEVICE); return; }
+  }
+  dev.position.set(0,0,Z_DEVICE); // fallback
+}
+
+/* ====== 단자/부품 재질 ====== */
+const MAT = {
+  housing: new THREE.MeshStandardMaterial({ color:0x3b465d, metalness:.35, roughness:.75 }),
+  housing2:new THREE.MeshStandardMaterial({ color:0x2b3448, metalness:.25, roughness:.85 }),
+  dark:    new THREE.MeshStandardMaterial({ color:0x1c2434, metalness:.2, roughness:.92 }),
+  metal:   new THREE.MeshStandardMaterial({ color:0x9aa3b2, metalness:.85, roughness:.35 }),
+  alu:     new THREE.MeshStandardMaterial({ color:0xcbd3df, metalness:.9, roughness:.3 }),
+  rubber:  new THREE.MeshStandardMaterial({ color:0x444a55, metalness:.05, roughness:.95 }),
+  glass:   new THREE.MeshPhysicalMaterial({ color:0x8fb6ff, metalness:.1, roughness:.1, transmission:.75, transparent:true, opacity:.65, ior:1.35, thickness:1.3 }),
+  lensG:   new THREE.MeshStandardMaterial({ color:0x4fa86b, emissive:0x154d2b, emissiveIntensity:.9, roughness:.35, metalness:.15 }),
+  red:     new THREE.MeshStandardMaterial({ color:0xc53a3a, emissive:0x220000, emissiveIntensity:.45 }),
+  green:   new THREE.MeshStandardMaterial({ color:0x2ea24f, emissive:0x001e00, emissiveIntensity:.55 }),
+  blue:    new THREE.MeshStandardMaterial({ color:0x4a79c6 }),
+  amber:   new THREE.MeshStandardMaterial({ color:0xd9a441, emissive:0x332100, emissiveIntensity:.55 })
+};
+function addTerminals(parent, positionsXY){
+  parent.userData.terminals = parent.userData.terminals || [];
+  positionsXY.forEach(p=>{
+    const [px,py] = p;
+    const pin = new THREE.Mesh(new THREE.SphereGeometry(3.6,16,16),
+      new THREE.MeshStandardMaterial({ color:0x89a8ff, roughness:.5, metalness:.25 }));
+    pin.position.set(px, py, Z_TERM_LOCAL);
+    pin.userData = { owner: parent, kind: 'terminal' };
+    parent.add(pin);
+    CLICKABLE_TERMINALS.push(pin);
+    parent.userData.terminals.push(pin);
+  });
+}
+
+/* ====== 부품 (로컬 Z=0) ====== */
+function finalizeDevice(g, label){
+  // 크기 먼저 산출(라벨 제외), 이후 라벨을 단자 반대쪽에 추가
+  computeSizeXY(g);
+  addAutoLabel(g, label);
+  return g;
+}
+function makeMCCB(){
+  const g = new THREE.Group(); g.userData={name:'MCCB',type:'MCCB',placed:false,terminals:[], zLock: Z_DEVICE};
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(70,36,46), MAT.housing));
+  const cover= new THREE.Mesh(new THREE.BoxGeometry(66,2,40), MAT.housing2); cover.position.set(0,6,20); g.add(cover);
+  const lever= new THREE.Mesh(new THREE.BoxGeometry(8,18,6), MAT.rubber);    lever.position.set(0,0,21); g.add(lever);
+  const iR   = new THREE.Mesh(new THREE.CylinderGeometry(2.2,2.2,2,16), MAT.red);   iR.rotation.z=Math.PI/2; iR.position.set(-14,10,20); g.add(iR);
+  const iG   = new THREE.Mesh(new THREE.CylinderGeometry(2.2,2.2,2,16), MAT.green); iG.rotation.z=Math.PI/2; iG.position.set( 14,10,20); g.add(iG);
+  addTerminals(g, [[-10,20],[10,20]]);
+  return finalizeDevice(g,'MCCB');
+}
+function makeEOCR(){
+  const g = new THREE.Group(); g.userData={name:'EOCR',type:'EOCR',placed:false,terminals:[], zLock: Z_DEVICE};
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(64,32,44), MAT.housing));
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(10,10,2,24), MAT.metal); base.rotation.z=Math.PI/2; base.position.set(0,4,22.5);
+  const knob = new THREE.Mesh(new THREE.CylinderGeometry(5.5,5.5,4,24), MAT.rubber); knob.rotation.z=Math.PI/2; knob.position.set(0,4,24.5);
+  const tB   = new THREE.Mesh(new THREE.CylinderGeometry(2.2,2.2,2,16), MAT.amber); tB.rotation.z=Math.PI/2; tB.position.set(-16,-4,22.5);
+  const rB   = new THREE.Mesh(new THREE.CylinderGeometry(2.2,2.2,2,16), MAT.green); rB.rotation.z=Math.PI/2; rB.position.set( 16,-4,22.5);
+  g.add(base,knob,tB,rB);
+  addTerminals(g, [[-12,18],[0,18],[12,18]]);
+  return finalizeDevice(g,'EOCR');
+}
+function makeMC(){
+  const g = new THREE.Group(); g.userData={name:'MC',type:'MC',placed:false,terminals:[], zLock: Z_DEVICE};
+  const coil = new THREE.Mesh(new THREE.BoxGeometry(70,18,46), MAT.blue);   coil.position.y=-11; g.add(coil);
+  const cont = new THREE.Mesh(new THREE.BoxGeometry(70,22,46), MAT.housing); cont.position.y=+11; g.add(cont);
+  for(let i=-24;i<=24;i+=12){ const rib=new THREE.Mesh(new THREE.BoxGeometry(64,1.5,2), MAT.metal); rib.position.set(0, 11 + ((i/12)-1)*5, i/12); g.add(rib); }
+  addTerminals(g, [[-20,22],[-6,22],[6,22],[20,22]]);
+  return finalizeDevice(g,'MC');
+}
+function makeTimer(){
+  const g = new THREE.Group(); g.userData={name:'TMR',type:'TMR',placed:false,terminals:[], zLock: Z_DEVICE};
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(56,30,40), MAT.housing2));
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(9,9,2,24),  MAT.metal);  base.rotation.z=Math.PI/2; base.position.set(0,2,20.5);
+  const knob = new THREE.Mesh(new THREE.CylinderGeometry(6,6,5,24),  MAT.rubber); knob.rotation.z=Math.PI/2; knob.position.set(0,2,23.5);
+  g.add(base, knob);
+  addTerminals(g, [[-8,16],[8,16]]);
+  return finalizeDevice(g,'TIMER');
+}
+function makeFlicker(){
+  const g = new THREE.Group(); g.userData={name:'FLK',type:'FLK',placed:false,terminals:[], zLock: Z_DEVICE};
+  const base = new THREE.Mesh(new THREE.BoxGeometry(56,14,40), MAT.dark); base.position.y=-8; g.add(base);
+  const inner= new THREE.Mesh(new THREE.CylinderGeometry(7,7,12,24), MAT.metal); inner.position.y=-2; g.add(inner);
+  const cover= new THREE.Mesh(new THREE.BoxGeometry(56,30,40), MAT.glass); cover.position.y=+8; g.add(cover);
+  addTerminals(g, [[-8,16],[8,16]]);
+  return finalizeDevice(g,'FLICKER');
+}
+function makeRelay8(){
+  const g = new THREE.Group(); g.userData={name:'REL-8',type:'REL8',placed:false,terminals:[], zLock: Z_DEVICE};
+  const socket = new THREE.Mesh(new THREE.CylinderGeometry(16,16,6,32), MAT.dark); socket.rotation.z=Math.PI/2; socket.position.y=-10; g.add(socket);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(40,28,28), MAT.housing); g.add(body);
+  for(let i=0;i<8;i++){ const ang=(i/8)*Math.PI*2; const pin=new THREE.Mesh(new THREE.CylinderGeometry(1.6,1.6,4,10), MAT.metal);
+    pin.rotation.z=Math.PI/2; pin.position.set(Math.cos(ang)*12, -11, Math.sin(ang)*12); g.add(pin); }
+  addTerminals(g, [[-8,14],[8,14]]);
+  return finalizeDevice(g,'RELAY');
+}
+function makePB(){
+  const g = new THREE.Group(); g.userData={name:'PB',type:'PB',placed:false,terminals:[], zLock: Z_DEVICE};
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(10,10,18,24), MAT.dark); body.position.y=6; g.add(body);
+  const bezel= new THREE.Mesh(new THREE.TorusGeometry(10.5,1.2,12,32), MAT.alu); bezel.rotation.x=Math.PI/2; bezel.position.y=15;
+  const cap  = new THREE.Mesh(new THREE.CylinderGeometry(8,8,6,24),   MAT.red);  cap.position.y=18; g.add(bezel,cap);
+  addTerminals(g, [[-6,8],[6,8]]);
+  return finalizeDevice(g,'PB');
+}
+function makeSelector(){
+  const g = new THREE.Group(); g.userData={name:'SEL',type:'SEL',placed:false,terminals:[], zLock: Z_DEVICE};
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(10,10,18,24), MAT.dark); body.position.y=6; g.add(body);
+  const colr = new THREE.Mesh(new THREE.TorusGeometry(10.5,1.2,12,32), MAT.alu); colr.rotation.x=Math.PI/2; colr.position.y=15; g.add(colr);
+  const lever= new THREE.Mesh(new THREE.BoxGeometry(3,2,16), MAT.alu); lever.position.set(0,18,8); lever.rotation.y = Math.PI/8; g.add(lever);
+  addTerminals(g, [[-6,8],[6,8]]);
+  return finalizeDevice(g,'SEL');
+}
+function makeLamp(){
+  const g = new THREE.Group(); g.userData={name:'LAMP',type:'LAMP',placed:false,lamp:true,lit:false,terminals:[], zLock: Z_DEVICE};
+  const bezel= new THREE.Mesh(new THREE.TorusGeometry(18,2.2,16,48), MAT.alu); bezel.rotation.x=Math.PI/2; bezel.position.y=20; g.add(bezel);
+  const lens = new THREE.Mesh(new THREE.SphereGeometry(16,24,24),     MAT.lensG); lens.position.y=18; g.add(lens);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(10,10,10,16), MAT.dark); base.position.y=5; g.add(base);
+  addTerminals(g, [[-5,-8],[5,-8]]); // ↓ 하단 단자 → 라벨은 자동으로 상단 배치
+  return finalizeDevice(g,'LAMP');
+}
+function makeFloatSW(){
+  const g = new THREE.Group(); g.userData={name:'FLS',type:'FLS',placed:false,terminals:[], zLock: Z_DEVICE};
+  const box   = new THREE.Mesh(new THREE.BoxGeometry(48,18,36), MAT.housing2); box.position.y=10; g.add(box);
+  const cable = new THREE.Mesh(new THREE.CylinderGeometry(2,2,12,10), MAT.rubber); cable.position.set(-18,2,0); cable.rotation.z=Math.PI/2; g.add(cable);
+  const ball  = new THREE.Mesh(new THREE.SphereGeometry(8,18,18),     MAT.amber);  ball.position.set(-30,2,0); g.add(ball);
+  addTerminals(g, [[-8,18],[8,18]]);
+  return finalizeDevice(g,'FLS');
+}
+
+/* ====== 스폰 ====== */
+function spawn(type){
+  let dev;
+  if(type==='MCCB') dev = makeMCCB();
+  else if(type==='EOCR') dev = makeEOCR();
+  else if(type==='MC')   dev = makeMC();
+  else if(type==='TMR')  dev = makeTimer();
+  else if(type==='FLK')  dev = makeFlicker();
+  else if(type==='REL8') dev = makeRelay8();
+  else if(type==='PB')   dev = makePB();
+  else if(type==='SEL')  dev = makeSelector();
+  else if(type==='FLS')  dev = makeFloatSW();
+  else if(type==='LAMP') dev = makeLamp();
+  else return;
+
+  dev.position.set(0, 0, Z_DEVICE);
+  DRAGGABLES.push(dev);
+  scene.add(dev);
+  placeWithoutOverlap(dev); // 가능한 빈 칸 배치
+  log(`${type} 생성`);
+}
+
+/* ====== 와이어 머티리얼/그리기(항상 잘 보이게) ====== */
+const wireMat = new THREE.LineBasicMaterial({color:0x00e1ff, transparent:true, opacity:1.0});
+wireMat.depthTest = false; wireMat.depthWrite = false;
+wireMat.blending = THREE.AdditiveBlending;
+
+const wirePreviewMat = new THREE.LineDashedMaterial({color:0x00e1ff, dashSize:6, gapSize:3, transparent:true, opacity:.9});
+wirePreviewMat.depthTest = false; wirePreviewMat.depthWrite = false;
+wirePreviewMat.blending = THREE.AdditiveBlending;
+
+function makeLine(points, material){
+  const geom = new THREE.BufferGeometry().setFromPoints(points);
+  const line = new THREE.Line(geom, material || wireMat);
+  if (material === wirePreviewMat) line.computeLineDistances();
+  line.renderOrder = 9999;
+  scene.add(line);
+  return line;
+}
+function cancelWire(){
+  if (!buildingWire) return;
+  scene.remove(buildingWire.tempLine); buildingWire.tempLine.geometry.dispose();
+  buildingWire = null; log('와이어 생성 취소');
+}
+
+/* ====== 와이어 라우팅(맨해튼) & 실시간 업데이트 ====== */
+function hvRoute(p0, p1, snap = WIRE_SNAP){ // 수평→수직, 코너는 절반 스냅
+  const cx = snapRound(p1.x, snap);
+  const cy = snapRound(p0.y, snap);
+  return [p0, new THREE.Vector3(cx, cy, Z_WIRE), p1];
+}
+function endpointOnWirePlane(term){
+  const w = term.getWorldPosition(new THREE.Vector3());
+  return new THREE.Vector3(w.x, w.y, Z_WIRE);
+}
+function updateAllWires(){
+  for (const w of wires){
+    const p0 = endpointOnWirePlane(w.a);
+    const p1 = endpointOnWirePlane(w.b);
+    w.line.geometry.setFromPoints(hvRoute(p0, p1));
+  }
+}
+
+/* ====== 드래그 & 카메라 패닝 ====== */
+let dragging = null; // { obj, delta: V3, prev: V3 }
+
+renderer.domElement.addEventListener('pointermove', (ev)=>{
+  ndcFromEvent(ev);
+
+// pointermove 안: 와이어 프리뷰
+if (buildingWire){
+  const v = pointOnZ(Z_WIRE, WIRE_SNAP); if (!v) return;
+  const last = buildingWire.points[buildingWire.points.length-1];
+  const corner = new THREE.Vector3(v.x, last.y, Z_WIRE);
+  buildingWire.tempLine.geometry.setFromPoints([...buildingWire.points, corner, v]);
+  buildingWire.tempLine.computeLineDistances();
+}
+function updateWiresForMoved(movedObj){
+  for (const w of wires){
+    const ownerA = w.a.userData.owner;
+    const ownerB = w.b.userData.owner;
+    if (ownerA === movedObj || ownerB === movedObj){
+      rerouteWithAnchor(w, movedObj);
+    }
+  }
+}
+  // 모듈 드래그
+  if (dragging){
+    const v = pointOnZ(Z_DEVICE); if (!v) return;
+    const pos = v.add(dragging.delta);
+    const halfX = PANEL_W/2 - 8, halfY = PANEL_H/2 - 8;
+    const nx = Math.max(-halfX, Math.min(halfX, Math.round(pos.x/GRID)*GRID));
+    const ny = Math.max(-halfY, Math.min(halfY, Math.round(pos.y/GRID)*GRID));
+    if (!isOverlapping(dragging.obj, nx, ny)){
+      dragging.obj.position.set(nx, ny, Z_DEVICE);
+      dragging.prev.copy(dragging.obj.position);
+     updateWiresForMoved(dragging.obj); // 이동 중 실시간 갱신
+    }
+  }
+
+  // 카메라 패닝
+  if (camPan.active){
+    raycaster.setFromCamera(pointer, camera);
+    const plane = new THREE.Plane(new THREE.Vector3(0,0,1), -camTarget.z);
+    const now = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(plane, now)){
+      const delta = now.clone().sub(camPan.startWorld);
+      camera.position.x -= delta.x; camera.position.y -= delta.y;
+      camTarget.x -= delta.x;       camTarget.y -= delta.y;
+      camPan.startWorld.copy(now);
+      camera.lookAt(camTarget);
+    }
+  }
 });
 
-/* ====== 배선(와이어) ====== */
-const wireMat = new THREE.LineBasicMaterial({color:0x87a6ff, linewidth:2});
-function addWire(a, b){
-  const pts = [a.getWorldPosition(new THREE.Vector3()), b.getWorldPosition(new THREE.Vector3())];
-  // 약간의 여유 베지어(간단히 폴리라인 3점)
-  const mid = pts[0].clone().add(pts[1]).multiplyScalar(.5);
-  mid.y += 20;
-  const geom = new THREE.BufferGeometry().setFromPoints([pts[0], mid, pts[1]]);
-  const line = new THREE.Line(geom, wireMat);
-  scene.add(line);
-  wires.push({line, a, b});
-  log(`배선 연결: ${a.userData.owner.userData.name} ↔ ${b.userData.owner.userData.name}`);
+renderer.domElement.addEventListener('pointerdown', (ev)=>{
+  ndcFromEvent(ev);
+
+  // 우클릭: 배선모드면 취소, 아니면 카메라 패닝 시작
+  if (ev.button === 2){
+    if (wireMode){ cancelWire(); }
+    else {
+      raycaster.setFromCamera(pointer, camera);
+      const plane = new THREE.Plane(new THREE.Vector3(0,0,1), -camTarget.z);
+      const start = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(plane, start)){
+        camPan.active = true; camPan.startWorld = start; camPan.pointerId = ev.pointerId;
+        renderer.domElement.setPointerCapture(ev.pointerId);
+      }
+    }
+    return;
+  }
+// pointerdown 안: 배선 모드 - 웨이포인트 추가
+// === Wire re-route helpers (GLOBAL) ===
+function isSameXY(a,b){ return Math.abs(a.x-b.x)<1e-6 && Math.abs(a.y-b.y)<1e-6; }
+
+function compressManhattan(points){
+  if (!points || points.length < 3) return points;
+  const out = [points[0]];
+  for (let i=1;i<points.length-1;i++){
+    const p0 = out[out.length-1], p1 = points[i], p2 = points[i+1];
+    if (isSameXY(p0,p1)) continue;
+    const horiz = Math.abs(p0.y - p1.y)<1e-6 && Math.abs(p1.y - p2.y)<1e-6;
+    const vert  = Math.abs(p0.x - p1.x)<1e-6 && Math.abs(p1.x - p2.x)<1e-6;
+    if (horiz || vert) continue;
+    out.push(p1);
+  }
+  out.push(points[points.length-1]);
+  return out;
 }
 
-function onPointerDown(ev){
-  if(!wireMode) return;
-  const rect = renderer.domElement.getBoundingClientRect();
-  pointer.x = ((ev.clientX - rect.left)/rect.width) * 2 - 1;
-  pointer.y = -((ev.clientY - rect.top)/rect.height) * 2 + 1;
-  raycaster.setFromCamera(pointer, camera);
-  const inter = raycaster.intersectObjects(CLICKABLE_TERMINALS, true)[0];
-  if(!inter) return;
-  const t = inter.object;
-  if(!firstTerminal){
-    firstTerminal = t;
-    t.material.emissive = new THREE.Color(0x2244ff);
-    t.material.emissiveIntensity = .7;
-  } else {
-    if(firstTerminal !== t){
-      addWire(firstTerminal, t);
-    }
-    // reset highlight
-    firstTerminal.material.emissiveIntensity = 0;
-    firstTerminal = null;
+function rerouteWithAnchor(w, movedOwner){
+  const startOwner = w.a.userData.owner;
+  const endOwner   = w.b.userData.owner;
+
+  const P0 = endpointOnWirePlane(w.a);
+  const Pn = endpointOnWirePlane(w.b);
+
+  if (movedOwner === startOwner) {
+    const anchor = (w.points && w.points.length>=2) ? w.points[1].clone()
+                  : new THREE.Vector3(snapRound(Pn.x, WIRE_SNAP), snapRound(P0.y, WIRE_SNAP), Z_WIRE);
+    const headCorner = new THREE.Vector3(anchor.x, snapRound(P0.y, WIRE_SNAP), Z_WIRE);
+    const tail = hvRoute(anchor.clone(), Pn, WIRE_SNAP); // [anchor, corner, Pn]
+    const newPts = [P0, headCorner, anchor, ...tail.slice(1)];
+    const compact = compressManhattan(newPts);
+    w.line.geometry.setFromPoints(compact);
+    w.points = compact;
+  } else if (movedOwner === endOwner) {
+    const anchor = (w.points && w.points.length>=2) ? w.points[w.points.length-2].clone()
+                  : new THREE.Vector3(snapRound(P0.x, WIRE_SNAP), snapRound(Pn.y, WIRE_SNAP), Z_WIRE);
+    const head = hvRoute(P0, anchor.clone(), WIRE_SNAP);  // [P0, corner, anchor]
+    const tailCorner = new THREE.Vector3(snapRound(Pn.x, WIRE_SNAP), anchor.y, Z_WIRE);
+    const newPts = [...head, tailCorner, Pn];
+    const compact = compressManhattan(newPts);
+    w.line.geometry.setFromPoints(compact);
+    w.points = compact;
   }
 }
-renderer.domElement.addEventListener('pointerdown', onPointerDown);
 
-/* ====== 간단 검증 로직(예시) ======
-   1) 슬롯 0: MCCB, 1: EOCR, 2: MC 가 올라가 있으면 "순서 OK"
-   2) 램프 단자 중 하나가 MC의 단자와 연결되어 있으면 램프 켜기
-   ※ 실제 시험 로직에 맞춰 강화 가능(코일/보조접점/자기유지 등)
-*/
+  // 배선 모드: 좌클릭(직각 웨이포인트/종료)
+  if (wireMode && ev.button === 0){
+    raycaster.setFromCamera(pointer, camera);
+    const inter = raycaster.intersectObjects(CLICKABLE_TERMINALS, true)[0];
+    if (!buildingWire){
+      if (!inter) return;
+      const t = inter.object;
+      if (t.material){ t.material.emissive = new THREE.Color(0x2244ff); t.material.emissiveIntensity = .7; }
+      const p0 = endpointOnWirePlane(t);
+      buildingWire = { startT: t, points: [p0], tempLine: makeLine([p0.clone(), p0.clone()], wirePreviewMat) };
+    } else {
+      if (inter && inter.object !== buildingWire.startT){
+        buildingWire.startT.material && (buildingWire.startT.material.emissiveIntensity = 0);
+        const p1 = endpointOnWirePlane(inter.object);
+        const last = buildingWire.points[buildingWire.points.length-1];
+        const finalPts = [...buildingWire.points, ...hvRoute(last, p1).slice(1)];
+        scene.remove(buildingWire.tempLine); buildingWire.tempLine.geometry.dispose();
+        const line = makeLine(finalPts, wireMat);
+		wires.push({ line, a: buildingWire.startT, b: inter.object, points: finalPts.slice() });
+        buildingWire = null;
+        log('배선 연결 완료');
+      } else {
+        const v = pointOnZ(Z_WIRE, WIRE_SNAP); if (v){
+          const last = buildingWire.points[buildingWire.points.length-1];
+          const seg = hvRoute(last, v);
+          buildingWire.points.push(...seg.slice(1));
+          buildingWire.tempLine.geometry.setFromPoints(buildingWire.points);
+          buildingWire.tempLine.computeLineDistances();
+        }
+      }
+    }
+    return;
+  }
+
+  // 모듈 드래그 시작(좌클릭)
+  if (!wireMode && ev.button === 0){
+    raycaster.setFromCamera(pointer, camera);
+    const inter = raycaster.intersectObjects(DRAGGABLES, true)[0];
+    if (!inter) return;
+    const obj = getTopDraggable(inter.object);
+    const v = pointOnZ(Z_DEVICE); if (!v) return;
+    dragging = { obj, delta: obj.position.clone().sub(v), prev: obj.position.clone() };
+  }
+});
+
+window.addEventListener('pointerup', (ev)=>{
+ if (dragging){
+    const moved = dragging.obj;
+   slotCheck(moved);
+   dragging = null;
+   updateWiresForMoved(moved);
+  }
+  if (camPan.active && camPan.pointerId === ev.pointerId){
+    camPan.active = false; camPan.pointerId = null; camPan.startWorld = null;
+    renderer.domElement.releasePointerCapture(ev.pointerId);
+  }
+});
+
+/* ====== 검증 ====== */
 function validate(){
   const placed = DRAGGABLES.filter(o=>o.userData.placed);
-  const bySlot = {};
-  placed.forEach(o=>{ if(o.userData.slotIndex!=null) bySlot[o.userData.slotIndex]=o; });
-
-  let orderOK = (bySlot[0]?.userData.type==='MCCB' &&
-                 bySlot[1]?.userData.type==='EOCR' &&
-                 bySlot[2]?.userData.type==='MC');
-
+  const bySlot = {}; placed.forEach(o=>{ if(o.userData.slotIndex!=null) bySlot[o.userData.slotIndex]=o; });
+  let orderOK = (bySlot[0]?.userData.type==='MCCB' && bySlot[1]?.userData.type==='EOCR' && bySlot[2]?.userData.type==='MC');
   log(orderOK ? '제작 순서: OK' : '제작 순서: 잘못됨 (예: 0=MCCB,1=EOCR,2=MC)');
 
-  // 램프 점등 조건(간단 예시): LAMP 단자 중 하나가 MC 단자와 연결되어 있으면 ON
+  // 램프 점등(예시): LAMP ↔ MC 연결 시
   let lampLit = false;
-  const lamps = DRAGGABLES.filter(o=>o.userData.type==='LAMP');
-  const mcs = DRAGGABLES.filter(o=>o.userData.type==='MC');
   for(const w of wires){
-    const aOwner = w.a.userData.owner, bOwner = w.b.userData.owner;
-    if((aOwner.userData.type==='LAMP' && bOwner.userData.type==='MC') ||
-       (bOwner.userData.type==='LAMP' && aOwner.userData.type==='MC')){
-      lampLit = true; break;
-    }
+    const a = w.a.userData.owner, b = w.b.userData.owner;
+    if((a.userData.type==='LAMP' && b.userData.type==='MC') || (b.userData.type==='LAMP' && a.userData.type==='MC')){ lampLit = true; break; }
   }
-  lamps.forEach(l=>{
-    l.userData.lit = lampLit;
-    l.material.emissive = new THREE.Color(lampLit?0x1aa64a:0x003300);
-    l.material.emissiveIntensity = lampLit?.9:.6;
-    l.children.forEach(ch=>{
-      if(ch instanceof THREE.CSS2DObject){
-        ch.element.classList.toggle('lamp-on', lampLit);
-      }
-    });
+  DRAGGABLES.filter(o=>o.userData.type==='LAMP').forEach(l=>{
+    const lens = l.children.find(ch => ch.geometry && ch.geometry.type==='SphereGeometry');
+    if (lens?.material) lens.material.emissiveIntensity = lampLit ? 1.2 : .6;
+    l.children.forEach(ch=>{ if(ch.isCSS2DObject){ ch.element.classList.toggle('lamp-on', lampLit); } });
   });
-
-  if(lampLit) log('상태: MC-램프 연결 감지 → 램프 ON (예시 규칙)');
+  if(lampLit) log('상태: MC-램프 연결 감지 → 램프 ON');
 }
 
+/* ====== UI ====== */
 document.getElementById('validateBtn').addEventListener('click', validate);
 document.getElementById('resetBtn').addEventListener('click', ()=>{
-  // 씬 정리
-  for(const w of wires){ scene.remove(w.line); }
+  for (const w of wires){ scene.remove(w.line); w.line.geometry?.dispose(); w.line.material?.dispose?.(); }
   wires.length = 0;
-  for(const o of DRAGGABLES){ scene.remove(o); }
-  DRAGGABLES.length = 0;
-  CLICKABLE_TERMINALS.length = 0;
-  firstTerminal = null;
+  for (const o of DRAGGABLES){
+    o.traverse(n=>{
+      if (labelRenderer && n.isCSS2DObject && n.element?.parentNode){ n.element.parentNode.removeChild(n.element); }
+      if (n.isSprite && n.material){ n.material.map?.dispose(); n.material.dispose(); }
+      n.geometry?.dispose(); n.material?.dispose?.();
+    });
+    scene.remove(o);
+  }
+  DRAGGABLES.length = 0; CLICKABLE_TERMINALS.length = 0;
+  if (labelRenderer) labelRenderer.domElement.innerHTML = '';
+  slots.forEach(s=> s.material.opacity = .30);
+  cancelWire();
   log('초기화 완료');
 });
 
-const wireBtn = document.getElementById('wireModeBtn');
-wireBtn.addEventListener('click', ()=>{
+document.getElementById('wireModeBtn').addEventListener('click', ()=>{
   wireMode = !wireMode;
-  wireBtn.textContent = '배선 모드: ' + (wireMode?'ON':'OFF');
+  document.getElementById('wireModeBtn').textContent = '배선 모드: ' + (wireMode?'ON':'OFF');
+  if (!wireMode) cancelWire();
   log('배선 모드 ' + (wireMode?'활성화':'비활성화'));
 });
 
-/* ====== UI: 스폰 ====== */
-document.querySelectorAll('[data-spawn]').forEach(b=>{
-  b.addEventListener('click', ()=>{
-    spawn(b.dataset.spawn);
-    // DragControls 갱신(새 부품 반영)
-    dragControls.deactivate();
-    dragControls.dispose();
-    dragControls = new THREE.DragControls(DRAGGABLES, camera, renderer.domElement);
-    dragControls.addEventListener('dragstart', ()=> controls.enabled=false);
-    dragControls.addEventListener('dragend', ()=> controls.enabled=true);
-  });
-});
+document.querySelectorAll('[data-spawn]').forEach(b=> b.addEventListener('click', ()=> spawn(b.dataset.spawn)));
+
+let guidesVisible = true;
+function refreshGuides(){
+  gridHelper.visible = guidesVisible;
+  slots.forEach(s => s.visible = guidesVisible);
+  axesXY.visible = guidesVisible;
+  document.getElementById('toggleGuidesBtn').textContent = guidesVisible ? '보조선 숨김' : '보조선 표시';
+}
+refreshGuides();
+document.getElementById('toggleGuidesBtn').addEventListener('click', ()=>{ guidesVisible=!guidesVisible; refreshGuides(); });
 
 /* ====== 루프 ====== */
 (function animate(){
   requestAnimationFrame(animate);
-  controls.update();
   renderer.render(scene, camera);
-  labelRenderer.render(scene, camera);
+  camera.lookAt(camTarget);
+  labelRenderer && labelRenderer.render(scene, camera);
 })();
 log('시뮬레이터 로드 완료');
 </script>
