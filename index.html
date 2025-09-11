@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>프로그램 대시보드 · GitHub Index</title>
+  <style>
+    :root{
+      --bg:#0b1220; --panel:#0f172a; --card:#111a2e; --muted:#94a3b8; --fg:#e9eef6; --accent:#60a5fa; --accent-2:#22d3ee;
+      --ring: 0 0 0 3px rgba(96,165,250,.35);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    a{color:inherit;text-decoration:none}
+    a:focus{outline:none; box-shadow:var(--ring); border-radius:10px}
+    .container{max-width:1200px;margin:0 auto;padding:18px 18px 72px}
+
+    /* Top Nav (Desktop) */
+    .navbar{position:sticky;top:0;z-index:50;background:rgba(10,16,28,.85);backdrop-filter:blur(8px);border-bottom:1px solid rgba(255,255,255,.08)}
+    .nav-inner{display:flex;align-items:center;gap:16px;justify-content:space-between;padding:10px 18px}
+    .brand{display:flex;gap:10px;align-items:center;font-weight:700;letter-spacing:.2px}
+    .brand .dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent-2))}
+    .menu-desktop{display:none;gap:14px;align-items:center}
+    .menu-desktop > .group{position:relative}
+    .menu-desktop > .group > button{background:transparent;border:0;color:var(--fg);padding:8px 10px;border-radius:10px;font-weight:600;cursor:pointer}
+    .menu-desktop > .group:hover > .dropdown{opacity:1;transform:translateY(0);pointer-events:auto}
+    .dropdown{position:absolute;top:110%;left:0;min-width:220px;background:var(--panel);border:1px solid rgba(255,255,255,.08);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.35);opacity:0;transform:translateY(6px);transition:.18s ease;pointer-events:none}
+    .dropdown a{display:block;padding:10px 12px;border-radius:10px;margin:6px;color:var(--muted)}
+    .dropdown a:hover{background:rgba(255,255,255,.06);color:var(--fg)}
+    .cta{display:none}
+
+    /* Mobile: hamburger + drawer */
+    .hamburger{display:inline-flex;gap:8px;align-items:center;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:transparent;color:var(--fg)}
+    .drawer{position:fixed;inset:0 30% 0 0;max-width:420px;background:var(--panel);transform:translateX(-100%);transition:transform .22s ease;z-index:60;border-right:1px solid rgba(255,255,255,.08)}
+    .drawer.open{transform:none}
+    .drawer .scroller{height:100%;overflow:auto;padding:16px}
+    .drawer h4{margin:14px 10px 6px;font-size:14px;color:var(--muted)}
+    .drawer a{display:block;padding:10px 12px;border-radius:10px;margin:4px 8px;color:var(--fg);border:1px solid rgba(255,255,255,.06)}
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity .2s}
+    .overlay.show{opacity:1;pointer-events:auto}
+
+    @media (min-width:1024px){
+      .menu-desktop{display:flex}
+      .hamburger{display:none}
+      .drawer,.overlay{display:none}
+      .cta{display:inline-block}
+    }
+
+    /* Hero */
+    .hero{padding:38px 18px 20px;border-bottom:1px solid rgba(255,255,255,.06)}
+    .hero .title{font-size:clamp(22px,4vw,34px);font-weight:800;line-height:1.1;margin:0}
+    .hero .sub{color:var(--muted);margin:8px 0 0}
+
+    /* Sections */
+    section{padding:32px 0}
+    .sec-head{display:flex;align-items:baseline;gap:12px;margin:0 0 16px}
+    .sec-head h2{font-size:clamp(18px,3.2vw,24px);margin:0}
+    .badge{font-size:12px;color:var(--muted);padding:4px 8px;border:1px solid rgba(255,255,255,.12);border-radius:999px}
+
+    /* Cards Grid */
+    .grid{display:grid;grid-template-columns:repeat(1,minmax(0,1fr));gap:12px}
+    @media (min-width:540px){.grid{grid-template-columns:repeat(2,1fr)}}
+    @media (min-width:880px){.grid{grid-template-columns:repeat(3,1fr)}}
+
+    :root{ --card-h:360px }
+    @media (min-width:880px){ :root{ --card-h:420px } }
+
+    .card{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));
+      border:1px solid rgba(255,255,255,.08);border-radius:16px;overflow:hidden;height:var(--card-h)}
+    .card:hover{border-color:rgba(34,211,238,.4)}
+
+    .card a{display:grid;grid-template-rows:2fr 1fr;height:100%}
+    .thumbbox{position:relative;background:#0f172a}
+    .thumb{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+
+    .info{display:flex;flex-direction:column;gap:8px;padding:12px 14px}
+    .card .kicker{font-size:12px;color:var(--muted)}
+    .card h3{margin:2px 0 2px;font-size:16px}
+    .card p{margin:0;color:var(--muted);font-size:13px}
+    .ext{margin-left:6px;opacity:.9}
+
+    /* Reveal Animations */
+    .reveal{opacity:0;transform:translateY(12px);transition:opacity .6s ease,transform .6s ease}
+    .reveal.show{opacity:1;transform:none}
+
+    /* Footer */
+    footer{padding:28px 0 64px;color:var(--muted);border-top:1px solid rgba(255,255,255,.06)}
+
+    /* Tiny helpers */
+    .muted{color:var(--muted)}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .spacer{height:24px}
+    .pill{padding:4px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.1);font-size:12px;color:var(--muted)}
+    .btn{padding:8px 10px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:transparent;color:var(--fg);cursor:pointer}
+    .btn:active{transform:translateY(1px)}
+  </style>
+</head>
+<body>
+  <!-- NAV -->
+  <nav class="navbar" aria-label="주 메뉴">
+    <div class="nav-inner">
+      <div class="brand" onclick="scrollToTop()" role="button" aria-label="맨 위로">
+        <span class="dot" aria-hidden="true"></span>
+        <span>프로그램 대시보드</span>
+      </div>
+
+      <!-- Desktop menu with dropdowns -->
+      <div class="menu-desktop" id="menuDesktop"></div>
+
+      <!-- Mobile hamburger -->
+      <button id="openDrawer" class="hamburger" aria-label="메뉴 열기" aria-controls="drawer" aria-expanded="false">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        메뉴
+      </button>
+    </div>
+  </nav>
+
+  <!-- Drawer (Mobile) -->
+  <aside id="drawer" class="drawer" aria-hidden="true" aria-label="사이드 메뉴">
+    <div class="scroller" id="drawerContent"></div>
+  </aside>
+  <div id="overlay" class="overlay" tabindex="-1" aria-hidden="true"></div>
+
+  <header class="hero container">
+    <h1 class="title">GitHub에 올린 프로그램을 한 자리에 — <span style="color:var(--accent)">Index</span></h1>
+    <p class="sub">PC에서는 상단 드롭다운 메뉴, 모바일에서는 사이드 메뉴로 탐색하세요. 아래 대시보드에서 <b>web → python</b> 순으로 프로젝트가 나타납니다.</p>
+    <div class="spacer"></div>
+    <div class="row">
+      <span class="pill">반응형</span>
+      <span class="pill">새 창 열기</span>
+      <span class="pill">스크롤 애니메이션</span>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- 소개 섹션 (앵커만 제공) -->
+    <section id="about" class="reveal">
+      <div class="sec-head">
+        <h2>소개</h2><span class="badge">지원업체 · 팀원 소개</span>
+      </div>
+      <div class="grid">
+        <article class="card"><a href="#about-support">
+          <span class="kicker">About</span>
+          <h3>지원업체 소개</h3>
+          <p>협력사, 파트너, 사용 기술 스택 등을 요약합니다. (내용은 추후 채움)</p>
+        </a></article>
+        <article class="card"><a href="#about-team">
+          <span class="kicker">About</span>
+          <h3>팀원 소개</h3>
+          <p>역할, 담당 모듈, 연락 포인트 등 팀 정보를 정리합니다. (내용은 추후 채움)</p>
+        </a></article>
+      </div>
+    </section>
+
+    <!-- WEB 섹션 -->
+    <section id="web" class="reveal">
+      <div class="sec-head">
+        <h2>web</h2><span class="badge">인터랙티브 웹 프로젝트</span>
+      </div>
+      <div id="webGrid" class="grid"></div>
+    </section>
+
+    <!-- PYTHON 섹션 -->
+    <section id="python" class="reveal">
+      <div class="sec-head">
+        <h2>python</h2><span class="badge">스크립트 · 데이터 툴</span>
+      </div>
+      <div id="pyGrid" class="grid"></div>
+    </section>
+
+    <!-- 추가학습 섹션 -->
+    <section id="learn" class="reveal">
+      <div class="sec-head">
+        <h2>추가학습</h2><span class="badge">참고자료 · 실습</span>
+      </div>
+      <div id="learnGrid" class="grid"></div>
+    </section>
+
+    <footer class="reveal">
+      <div class="container">
+        <p class="muted">© <span id="year"></span> GitHub Programs Index. 모든 링크는 <i>새 창</i>으로 열립니다.</p>
+      </div>
+    </footer>
+  </main>
+
+  <script>
+(() => {
+  'use strict';
+  // ======= 구성 (링크/썸네일) =======
+  const LINKS = {
+    web: [
+      { title: '나라이름 맞추기', href: './earth-5.html', desc: '국기·수도 퀴즈와 카메라 이동 인터랙션', thumb: './thumbnail/earth-quiz.jpg' },
+      { title: '작은 지구 마을', href: './rider4.html', desc: '미니어처 월드 · 캐릭터/POI/라벨', thumb: './thumbnail/tiny-village.jpg' },
+      { title: '보일의 법칙', href: './boil.html', desc: '압력·부피 상관관계 시뮬레이션', thumb: './thumbnail/boil.jpg' },
+      { title: '점검일지', href: './inspection/index.html', desc: '모바일 친화 체크리스트 · 로그', thumb: './thumbnail/inspection.jpg' }
+    ],
+    python: [
+      { title: '미정1', href: '#', desc: '업데이트 예정', disabled: true },
+      { title: '미정2', href: '#', desc: '업데이트 예정', disabled: true },
+      { title: '미정3', href: '#', desc: '업데이트 예정', disabled: true }
+    ],
+    learn: [
+      { title: '미정1', href: '#', desc: '업데이트 예정', disabled: true },
+      { title: '미정1', href: '#', desc: '업데이트 예정', disabled: true },
+      { title: '미정1', href: '#', desc: '업데이트 예정', disabled: true }
+    ],
+    about: { support: '#about-support', team: '#about-team' }
+  };
+
+  // SVG 플레이스홀더 (이미지 실패 시)
+  const PLACEHOLDER = `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='480'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop stop-color='%23111a2e' offset='0'/><stop stop-color='%23141f36' offset='1'/></linearGradient></defs><rect width='100%' height='100%' fill='url(%23g)'/></svg>`;
+
+  // ======= NAV: 데스크톱 드롭다운 =======
+  const menuDesktop = document.getElementById('menuDesktop');
+  function attrExt(href){ return (href && href.startsWith('#')) ? '' : 'target="_blank" rel="noopener"'; }
+  function buildDropdown(label, items){
+    return `
+      <div class="group" role="none">
+        <button aria-haspopup="true" aria-expanded="false">${label}</button>
+        <div class="dropdown" role="menu">
+          ${items.map(i=>`<a role="menuitem" ${i.disabled? 'aria-disabled="true" tabindex="-1"' : ''} href="${i.href}" ${attrExt(i.href)}>${i.label}</a>`).join('')}
+        </div>
+      </div>`;
+  }
+  menuDesktop.innerHTML =
+    buildDropdown('소개', [ {label:'지원업체 소개', href:LINKS.about.support}, {label:'팀원 소개', href:LINKS.about.team} ]) +
+    buildDropdown('web', LINKS.web.map(v=>({label:v.title, href:v.href, disabled:!!v.disabled}))) +
+    buildDropdown('python', LINKS.python.map(v=>({label:v.title, href:v.href, disabled:!!v.disabled}))) +
+    buildDropdown('추가학습', LINKS.learn.map(v=>({label:v.title, href:v.href, disabled:!!v.disabled}))) +
+    `<a class="btn cta" href="#web">대시보드 보기</a>`;
+
+  // ======= 모바일 드로어 =======
+  const drawer = document.getElementById('drawer');
+  const overlay = document.getElementById('overlay');
+  const openBtn = document.getElementById('openDrawer');
+  const drawerContent = document.getElementById('drawerContent');
+  drawerContent.innerHTML = `
+    <h4>소개</h4>
+    <a href="${LINKS.about.support}">지원업체 소개</a>
+    <a href="${LINKS.about.team}">팀원 소개</a>
+    <h4>web</h4>
+    ${LINKS.web.map(v=>`<a ${v.disabled? 'aria-disabled="true" tabindex="-1"' : ''} href="${v.href}" ${attrExt(v.href)}>${v.title}</a>`).join('')}
+    <h4>python</h4>
+    ${LINKS.python.map(v=>`<a ${v.disabled? 'aria-disabled="true" tabindex="-1"' : ''} href="${v.href}" ${attrExt(v.href)}>${v.title}</a>`).join('')}
+    <h4>추가학습</h4>
+    ${LINKS.learn.map(v=>`<a ${v.disabled? 'aria-disabled="true" tabindex="-1"' : ''} href="${v.href}" ${attrExt(v.href)}>${v.title}</a>`).join('')}
+  `;
+  openBtn.addEventListener('click', ()=>{ drawer.classList.add('open'); overlay.classList.add('show'); openBtn.setAttribute('aria-expanded','true'); drawer.setAttribute('aria-hidden','false'); });
+  overlay.addEventListener('click', closeDrawer);
+  window.addEventListener('keydown', e=>{ if(e.key==='Escape') closeDrawer(); });
+  drawerContent.addEventListener('click', e=>{ const a = e.target.closest('a[href]'); if(a && !a.hasAttribute('aria-disabled')) closeDrawer(); });
+  function closeDrawer(){ drawer.classList.remove('open'); overlay.classList.remove('show'); openBtn.setAttribute('aria-expanded','false'); drawer.setAttribute('aria-hidden','true'); }
+
+  // ======= 카드 렌더 =======
+  const webGrid = document.getElementById('webGrid');
+  const pyGrid  = document.getElementById('pyGrid');
+  const learnGrid = document.getElementById('learnGrid');
+  renderCards(webGrid, LINKS.web, 'Web');
+  renderCards(pyGrid, LINKS.python, 'Python');
+  renderCards(learnGrid, LINKS.learn, 'Learn');
+
+  function renderCards(root, list, kicker){
+    root.innerHTML = list.map(item=>{
+      const disabled = !!item.disabled;
+      const attrs = disabled ? 'aria-disabled="true" tabindex="-1"' : attrExt(item.href);
+      const src = item.thumb || PLACEHOLDER;
+      return `
+        <article class="card reveal">
+          <a href="${item.href}" ${attrs}>
+            <figure class="thumbbox">
+              <img class="thumb" src="${src}" alt="${escapeHTML(item.title)} 썸네일" loading="lazy" decoding="async">
+            </figure>
+            <div class="info">
+              <span class="kicker">${kicker}</span>
+              <h3>${escapeHTML(item.title)}${!disabled ? '<svg class="ext" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 3h7v7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M21 3 10 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M21 14v7h-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3 10v11h11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' : ''}</h3>
+              <p>${escapeHTML(item.desc || '')}</p>
+            </div>
+          </a>
+        </article>`;
+    }).join('');
+
+    // 이미지 에러 시 플레이스홀더 주입
+    root.querySelectorAll('img.thumb').forEach(img=>{
+      img.addEventListener('error', ()=>{ img.src = PLACEHOLDER; });
+    });
+  }
+
+  // ======= 유틸 =======
+  function escapeHTML(s){
+    return String(s).replace(/[&<>"]/g, function(m){
+      switch(m){
+        case '&': return '&amp;';
+        case '<': return '&lt;';
+        case '>': return '&gt;';
+        case '"': return '&quot;';
+        default: return m;
+      }
+    });
+  }
+
+  // 스크롤 리빌
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('show'); io.unobserve(e.target); } });
+  }, {threshold:0.12});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+  // 푸터 년도
+  const y = document.getElementById('year'); if(y) y.textContent = new Date().getFullYear();
+})();
+</script>
+
+  <!-- 소개 상세 (추후 자유 편집) -->
+  <div id="about-support" class="container" style="padding-top:0">
+    <div class="spacer"></div>
+    <h3>지원업체 소개</h3>
+    <p class="muted">지원기업·기관, 참여 로타리클럽, 기술 파트너(Three.js, Konva, Python·Pandas 등) 등 필요 정보를 간단 요약합니다.</p>
+  </div>
+  <div id="about-team" class="container" style="padding-top:0">
+    <div class="spacer"></div>
+    <h3>팀원 소개</h3>
+    <p class="muted">PM · 웹/그래픽 · Python · QA · 운영 등 역할 및 연락처를 정리합니다.</p>
+  </div>
+</body>
+</html>
