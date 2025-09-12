@@ -1,0 +1,325 @@
+<!DOCTYPE html><html lang="ko"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>점검일지(A) — iOS 호환 안정판</title>
+<style>
+:root{
+  --safe:182mm; --gap:6mm; --bg:#0b1220; --panel:#0f172a; --brand:#2f6feb; --thead:#f3f3f3;
+  --cap-lines:2; --cap-lh:1.25; --cap-h:calc(var(--cap-lines)*var(--cap-lh)*1em);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:#e9eef6;font-family:"맑은 고딕",system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:980px;margin:0 auto}
+
+/* 상단 고정 */
+.sticky{position:sticky;top:0;z-index:20;background:#0b1220e6;backdrop-filter:blur(6px);border-bottom:1px solid #ffffff22}
+.tabs{display:flex;gap:8px;padding:12px}
+.tab{flex:1;padding:10px;border-radius:12px;background:#1b2640;border:1px solid #ffffff24;color:#cde1ff;cursor:pointer}
+.tab.active{background:var(--brand);color:#fff}
+.head{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;padding:0 12px 12px}
+.disp{grid-column:1/-1;padding:12px;background:#101a2c;border:1px solid #ffffff1a;border-radius:12px;text-align:center;font-size:18px}
+.btn{padding:10px 12px;border-radius:12px;border:1px solid #ffffff24;background:#16213a;color:#e9eef6}.btn.primary{background:var(--brand)}
+
+/* 본문 리스트 */
+.list{padding:12px;display:flex;flex-direction:column;gap:12px}
+.row{background:var(--panel);border:1px solid #ffffff18;border-radius:14px;padding:12px;display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between}
+.rowHead{width:100%;display:flex;align-items:center;gap:12px}
+.ctrls{display:flex;gap:12px;align-items:center}
+.toggle{width:56px;height:30px;border-radius:999px;background:#475569;position:relative;border:1px solid #0006;cursor:pointer}
+.toggle .k{position:absolute;top:2px;left:2px;width:26px;height:26px;border-radius:50%;background:#cbd5e1;transition:transform .18s}
+.toggle.on{background:#14532d}.toggle.on .k{transform:translateX(26px);background:#34d399}
+.num{display:flex;align-items:center;border:1px solid #ffffff24;border-radius:10px;overflow:hidden}
+.num button{width:32px;height:32px;border:0;background:#16213a;color:#cfe3ff}
+.num input{width:64px;height:32px;background:#0b1220;border:0;color:#e9eef6;text-align:center}
+.meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.meta input[type=file]{display:none}
+.meta label{border:1px dashed #3b82f6;padding:6px 10px;border-radius:10px;color:#cde1ff;cursor:pointer}
+.note{flex:1;min-width:220px;border:1px solid #ffffff24;background:#0b1220;color:#e9eef6;border-radius:10px;padding:8px}
+.tiny{font-size:12px;color:#93a6bf}
+
+/* 인쇄 */
+@page{size:A4;margin:12mm}
+.print{display:none;color:#000;background:#fff}
+.print .page{width:var(--safe);margin:0 auto}
+.tbl{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}
+.tbl th,.tbl td{border:1px solid #000;padding:6px;vertical-align:top;word-break:break-word}
+.tbl th{background:var(--thead)}
+.photo-title{margin:10px 0 6px;font-weight:700;color:#000}
+.row-block{break-inside:avoid;page-break-inside:avoid;margin-bottom:var(--gap)}
+.photo-grid3{width:100%;display:grid;gap:var(--gap);grid-template-columns:repeat(3,1fr)}
+.cell{display:flex;flex-direction:column;align-items:center}
+.phase-tag{width:100%;text-align:center;font-size:12px;font-weight:700;border-bottom:1px solid #000;padding:4px 0;background:#f8f8f8;color:#000}
+
+/* ✅ 인쇄 전용 사진박스 — iOS 안전 폴백(::before) + EXIF 자동 방향 */
+.print .imgbox{position:relative;border:1px solid #000;background:#fff;overflow:hidden}
+.print .imgbox::before{content:"";display:block;padding-top:75%} /* 4:3 폴백 */
+.print .imgbox > img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;image-orientation:from-image}
+@supports (aspect-ratio: 4 / 3) {
+  .print .imgbox{aspect-ratio:4/3}
+  .print .imgbox::before{content:none}
+  .print .imgbox > img{position:static}
+}
+
+.cap{margin-top:4px;height:var(--cap-h);line-height:var(--cap-lh);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:2px}
+.cap .name{max-width:96%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cap .time{font-size:11px;opacity:.8}
+.empty{opacity:.55;font-size:12px;color:#000;position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+
+@media print{
+  body{background:#fff;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .sticky,.list{display:none!important}
+  .print{display:block!important}
+}
+</style>
+</head><body>
+<div class="wrap">
+  <div class="sticky">
+    <div class="tabs" id="phaseTabs">
+      <button class="tab active" data-phase="작업전">작업전</button>
+      <button class="tab" data-phase="작업중">작업중</button>
+      <button class="tab" data-phase="작업후">작업후</button>
+    </div>
+    <div class="head">
+      <!-- 시간만 노출 -->
+      <div class="disp"><b id="now"></b></div>
+      <button class="btn" id="saveBtn">임시저장</button>
+      <button class="btn primary" id="printBtn">🖨️ 인쇄</button>
+      <button class="btn" id="resetBtn">초기화</button>
+    </div>
+  </div>
+
+  <div class="list" id="list"></div>
+
+  <!-- 인쇄 전용 -->
+  <section class="print">
+    <div class="page">
+      <div style="text-align:center;border:1px solid #000;display:flex;align-items:stretch;flex-direction:row;justify-content:space-between">
+        <div style="border:1px solid #000;font-size:12px;width:60%">
+          <h1 style="font-size:2em;margin:0;padding-top:15px">작업장/시설위생 점검리스트</h1>
+          <p style="line-height:180%;padding-left:25px;font-size:14px;text-align:left">
+            점검일: <span id="pDate"></span> ( 주기 : 매일 )<br>점검자: <span id="pPlace">홍성덕</span>
+          </p>
+        </div>
+        <div style="display:flex;flex-direction:row;width:40%;flex-wrap:nowrap">
+          <div style="border:1px solid #000;text-align:center;width:16%;display:flex;justify-content:center;align-items:center">결<br/>재</div>
+          <div style="font-weight:bold;width:28%;border:1px solid #000;font-size:14px;display:flex;flex-direction:column"><div style="text-align:center;border-bottom:1px solid #000;padding:4px;width:100%">작성</div><div style="height:35px"></div></div>
+          <div style="font-weight:bold;width:28%;border:1px solid #000;font-size:14px;display:flex;flex-direction:column"><div style="text-align:center;border-bottom:1px solid #000;padding:4px;width:100%">검토</div><div style="height:35px"></div></div>
+          <div style="font-weight:bold;width:28%;border:1px solid #000;font-size:14px;display:flex;flex-direction:column"><div style="text-align:center;border-bottom:1px solid #000;padding:4px;width:100%">승인</div><div style="height:35px"></div></div>
+        </div>
+      </div>
+      <br/>
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th style="width:22mm">구분</th><th style="width:80mm">점검사항</th>
+            <th style="width:13mm">작업전</th><th style="width:13mm">작업중</th><th style="width:13mm">작업후</th>
+            <th style="width:30mm">점검자 의견</th>
+          </tr>
+        </thead>
+        <tbody id="pBody"></tbody>
+      </table>
+      <br/>
+      <div id="pPhotos"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+/* ========= 저장(로컬스토리지 폴백) ========= */
+const STORE_KEY="chk-A-tabbed";
+let S={}, S_RAM="{}";
+try{ S = JSON.parse(localStorage.getItem(STORE_KEY)||"{}"); }catch(e){ try{ S=JSON.parse(S_RAM)||{} }catch(_){ S={} } }
+function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch(e){ S_RAM = JSON.stringify(S); } }
+
+/* ========= 기본 데이터 ========= */
+const ITEMS=[
+ {g:"출입구(소독실)",t:"장화 세척기는 작동이 잘되고 있는가?",type:"toggle"},
+ {g:"출입구(소독실)",t:"손 세척 소독시설 이상 유무 및 알코올 잔량상태",type:"toggle"},
+ {g:"출입구(소독실)",t:"장화 소독조에 소독약은 기준량이상 투입했는가?",type:"toggle"},
+ {g:"소독조",t:"손 소독수는 깨끗하며 주기적으로 교체하고 있나??",type:"toggle"},
+ {g:"소독조",t:"칼 소독조 온도는 83℃ 이상으로 적절한가?",type:"number",unit:"℃",min:0,max:100,step:0.5,std:83},
+ {g:"통로",t:"작업장 통로에 오염 물질은 없는가?",type:"toggle"},
+ {g:"통로",t:"고압세척기 가동 상태는 양호한가?",type:"toggle"},
+ {g:"청소도구",t:"청소도구 보관 및 상태는 양호한가?",type:"toggle"},
+ {g:"청소도구",t:"청소용 세척제는 적량 및 안전 재고로 관리되는가?",type:"toggle"},
+ {g:"조명/환기",t:"작업장내 조명의 조도는 적당한가?",type:"toggle"},
+ {g:"조명/환기",t:"작업장내 조명의 등보호장치는 양호한가?",type:"toggle"},
+ {g:"조명/환기",t:"작업장내 환기는 잘 되고있는가?",type:"toggle"},
+ {g:"천정ㆍ벽",t:"작업장내 응결수는 없는가?",type:"toggle"},
+ {g:"천정·벽",t:"작업장내 벽과 천장에 파손/누수현상, 오염물질은 없는가?",type:"toggle"},
+ {g:"바닥",t:"작업장 바닥에 물기가 고인 곳은 없는가?",type:"toggle"},
+ {g:"바닥",t:"작업장 바닥에 오염물질(지방 등)은 없는가?",type:"toggle"},
+ {g:"급수/배수",t:"청소 및 작업에 필요한 급수는 양호한가?",type:"toggle"},
+ {g:"방충/방서",t:"창문에 설치된 방충망의 상태는 양호한가?",type:"toggle"},
+ {g:"방충/방서",t:"작업장에 쥐 모기 파리 등 해충은 없는가?",type:"toggle"},
+ {g:"폐기물보관소",t:"폐기물 관리는 잘되고 있는가?",type:"toggle"},
+ {g:"폐기물보관소",t:"청소 및 정리정돈은 잘되고 있는가?",type:"toggle"},
+ {g:"소독제",t:"작업장에서 사용하는 소독 분무기의 소독제 잔량상태",type:"toggle"},
+ {g:"소독제",t:"적정 소독약품을 사용하고 있으며, 표시/구분(라벨링)하여 소독준비실에 보관 유무",type:"toggle"},
+ {g:"화장실",t:"화장실 청소 상태는 양호하고 배수관 및 변기 막힘은 없는가?",type:"toggle"},
+ {g:"화장실",t:"손세척 세제(물비누 등) 비치 및 소독제 잔량상태",type:"toggle"},
+ {g:"휴게실(탈의실)/목욕실",t:"휴게실 정리정돈은 잘되어 있는가?",type:"toggle"},
+ {g:"휴게실(탈의실)/목욕실",t:"목욕실의 배수는 정상적인가?",type:"toggle"}
+];
+const PHASES=["작업전","작업중","작업후"];
+const cur=()=>document.querySelector(".tab.active").dataset.phase;
+const keyV=(p,i)=>`${p}__${i}`, keyN=(p,i)=>`${p}__${i}__note`, keyP=(p,i)=>`${p}__${i}__photo`, keyD=(p,i)=>`${p}__${i}__data`, keyT=(p,i)=>`${p}__${i}__time`;
+
+/* ========= UI 빌드 ========= */
+function build(){
+  const root=document.getElementById('list'); root.innerHTML='';
+  ITEMS.forEach((it,i)=>{
+    const row=document.createElement('div'); row.className='row';
+    row.innerHTML=`<div class="rowHead"><b>[${it.g}]</b>&nbsp;${it.t}</div>`;
+
+    const ctr=document.createElement('div'); ctr.className='ctrls';
+    if(it.type==='toggle'){
+      const t=document.createElement('div'); t.className='toggle'; t.innerHTML='<div class="k"></div>';
+      if(S[keyV(cur(),i)]===true) t.classList.add('on');
+      t.onclick=()=>{ const v=!t.classList.contains('on'); t.classList.toggle('on',v); S[keyV(cur(),i)]=v; save(); };
+      ctr.appendChild(t);
+    }else{
+      const wrap=document.createElement('div'); wrap.className='num';
+      wrap.innerHTML=`<button>-</button><input type="number" min="${it.min}" max="${it.max}" step="${it.step||1}" value="${S[keyV(cur(),i)]??it.std??0}"><button>+</button>`;
+      const [minus,input,plus]=wrap.children;
+      const sync=v=>{ v=Math.max(it.min,Math.min(it.max,Number(v))); input.value=v; S[keyV(cur(),i)]=v; save(); };
+      minus.onclick=()=>sync(Number(input.value)-(it.step||1));
+      plus.onclick=()=>sync(Number(input.value)+(it.step||1));
+      input.onchange=()=>sync(input.value);
+      ctr.appendChild(wrap);
+    }
+    row.appendChild(ctr);
+
+    const meta=document.createElement('div'); meta.className='meta';
+    const f=document.createElement('input'); f.type='file'; f.accept='image/*'; f.setAttribute('capture','environment'); f.id=`f_${i}`;
+    const lab=document.createElement('label'); lab.setAttribute('for',f.id); lab.textContent='📷 증빙';
+    const tiny=document.createElement('span'); tiny.className='tiny'; tiny.textContent=S[keyP(cur(),i)]?`첨부: ${S[keyP(cur(),i)]}`:'사진 없음';
+    f.onchange=async()=>{ const file=f.files?.[0]; if(!file) return;
+      const name=`${cur()}-${it.g}.jpg`;
+      try{
+        const {dataURL}=await compressImage(file,1024,0.8); // iOS 메모리 안정값
+        S[keyD(cur(),i)]=dataURL; S[keyP(cur(),i)]=name; S[keyT(cur(),i)]=Date.now(); save();
+        tiny.textContent=`첨부: ${name}`;
+      }catch{
+        const r=new FileReader(); r.onload=()=>{ S[keyD(cur(),i)]=r.result; S[keyP(cur(),i)]=name; S[keyT(cur(),i)]=Date.now(); save(); tiny.textContent=`첨부: ${name}`; }; r.readAsDataURL(file);
+      }
+    };
+    const note=document.createElement('textarea'); note.className='note'; note.placeholder='비고(메모)'; note.value=S[keyN(cur(),i)]||"";
+    note.onchange=()=>{ S[keyN(cur(),i)]=note.value; save(); };
+    meta.append(lab,f,tiny,note);
+    row.appendChild(meta);
+
+    root.appendChild(row);
+  });
+}
+
+/* ========= 인쇄 ========= */
+function escapeHTML(s){return String(s).replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function collectNotes(i){
+  const parts=[];
+  for(const p of PHASES){
+    const n=S[keyN(p,i)];
+    if(n && n.trim()){
+      parts.push(`<b>[${p}]</b> `+escapeHTML(n).replace(/\r?\n/g,'<br>'));
+    }
+  }
+  return parts.length? parts.join('<br>') : '-';
+}
+function fmt(t){ const d=new Date(t||Date.now()); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+
+function buildPrint(){
+  // 날짜 스냅샷
+  const d=document.getElementById('pDate'); if(d) d.textContent=new Date().toLocaleDateString('ko-KR');
+  // 표
+  const body=document.getElementById('pBody'); body.innerHTML='';
+  ITEMS.forEach((it,i)=>{
+    const V=p=>it.type==='toggle'?(S[keyV(p,i)]===true?"적합":S[keyV(p,i)]===false?"부적합":""):(S[keyV(p,i)]??"")+(it.unit||"");
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${it.g}</td><td>${it.t}</td><td>${V("작업전")}</td><td>${V("작업중")}</td><td>${V("작업후")}</td><td class="noteCell"></td>`;
+    tr.querySelector('.noteCell').innerHTML=collectNotes(i);
+    body.appendChild(tr);
+  });
+  // 사진 (항목별 전/중/후 3칸 고정)
+  const host=document.getElementById('pPhotos'); host.innerHTML='';
+  let rows=0;
+  ITEMS.forEach((it,i)=>{
+    const cells=PHASES.map(p=>{
+      const data=S[keyD(p,i)], name=S[keyP(p,i)], time=S[keyT(p,i)];
+      return (data&&name)?{data,name,time}:null;
+    });
+    if(!cells[0]&&!cells[1]&&!cells[2]) return;
+    rows++;
+    const title=document.createElement('div'); title.className='photo-title'; title.textContent=`[${it.g}] ${it.t}`;
+    const row=document.createElement('div'); row.className='photo-grid3 row-block';
+    row.appendChild(cell(cells[0],'작업전'));
+    row.appendChild(cell(cells[1],'작업중'));
+    row.appendChild(cell(cells[2],'작업후'));
+    host.append(title,row);
+  });
+  host.style.display = rows? 'block':'none';
+}
+
+function cell(obj,label){
+  const c=document.createElement('div'); c.className='cell';
+  c.innerHTML=`<div class="phase-tag">${label}</div>`;
+  const box=document.createElement('div'); box.className='imgbox';
+  if(obj){ box.innerHTML=`<img src="${obj.data}" alt="">`; }
+  else  { box.innerHTML=`<div class="empty">(첨부 없음)</div>`; }
+  c.appendChild(box);
+  const cap=document.createElement('div'); cap.className='cap';
+  cap.innerHTML = `<div class="name">${obj?escapeHTML(obj.name):'&nbsp;'}</div><div class="time">${obj?fmt(obj.time):'&nbsp;'}</div>`;
+  c.appendChild(cap);
+  return c;
+}
+
+/* ========= 이미지 압축 ========= */
+async function compressImage(file, maxDim=1024, quality=0.8){
+  const dataURL = await new Promise((resolve,reject)=>{
+    const fr=new FileReader();
+    fr.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        const scale=Math.min(1, maxDim/Math.max(img.width,img.height));
+        const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
+        const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+        const cx=cv.getContext('2d',{alpha:false});
+        cx.drawImage(img,0,0,w,h);
+        resolve(cv.toDataURL('image/jpeg',quality));
+      };
+      img.onerror=reject; img.src=fr.result;
+    };
+    fr.onerror=reject; fr.readAsDataURL(file);
+  });
+  return {dataURL};
+}
+
+/* ========= 이벤트 ========= */
+document.getElementById('phaseTabs').onclick=(e)=>{
+  const t=e.target;
+  if(!t.classList.contains('tab')) return;
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+  t.classList.add('active');
+  build();
+};
+document.getElementById('resetBtn').onclick=()=>{ if(confirm('초기화할까요?')){ S={}; save(); build(); } };
+document.getElementById('saveBtn').onclick=()=>alert('임시저장 완료');
+document.getElementById('printBtn').onclick=()=>{ buildPrint(); window.print(); };
+window.addEventListener('beforeprint', buildPrint);
+// iOS용 인쇄 감지(사파리)
+try{
+  const mq=window.matchMedia && window.matchMedia('print');
+  if(mq){ (mq.addEventListener?mq.addEventListener('change',h):mq.addListener(h)); }
+  function h(e){ if(e.matches) buildPrint(); }
+}catch(_){}
+
+/* 시계: 시간만 노출 */
+setInterval(()=>{
+  const el=document.getElementById('now'); if(!el) return;
+  const d=new Date(); const p=n=>String(n).padStart(2,'0');
+  el.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+},1000);
+
+/* 시작 */
+build();
+</script>
+</body></html>
