@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>엔딩크레딧형 다국어 번역 패널 · 첫 나라 스크롤 마스터 · 기본 3행(최대4)</title>
+  <style>
+    :root{
+      --panel-min: 25vw;   /* 최소 폭: 화면 1/4 */
+      --panel-w: 36vw;     /* 초기 폭 */
+      --bg: #f6f7fb; --ink: #111; --muted:#555;
+      --item-font: 1.6rem; /* 전역 글자 크기(일괄 변경) */
+    }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+
+    .panel{position:fixed;inset:0 auto 0 0;height:100%;width:clamp(var(--panel-min), var(--panel-w), 90vw);background:#fff;border-right:4px solid var(--ink);display:flex;flex-direction:column}
+    .panel header{padding:10px 12px;border-bottom:4px solid var(--ink);display:flex;gap:10px;align-items:center;justify-content:space-between}
+    .brand{font-weight:900;letter-spacing:.2px}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .btn{appearance:none;border:3px solid var(--ink);background:#fff;color:var(--ink);padding:8px 12px;border-radius:6px;cursor:pointer;font-weight:700}
+    .btn.primary{background:#111;color:#fff}
+    .select, .text{background:#fff;color:var(--ink);border:3px solid var(--ink);border-radius:6px;padding:8px 10px}
+
+    /* 그리드: 열 수는 동적으로, 열마다 행 수(1~4)는 동적으로 계산 (기본 3행) */
+    .grid{flex:1; display:grid; gap:12px; padding:12px; min-height:0}
+    .col{display:grid; gap:12px; min-height:0}
+
+    /* 언어 박스 */
+    .langbox{position:relative; display:flex; flex-direction:column; min-height:0; background:#fff; border:4px solid var(--ink); border-radius:4px}
+    .label{flex:0 0 auto; display:flex; align-items:center; gap:10px; padding:8px 12px; background:#fff; border-bottom:3px dotted #333; font-weight:900}
+    .flag{width:20px;height:14px;object-fit:cover;border:2px solid var(--ink)}
+    .viewport{flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; padding:6px 0; scroll-behavior:smooth; overscroll-behavior:contain}
+    .track{}
+    .item{padding:8px 12px; font-weight:700; line-height:1.45; font-size:var(--item-font)}
+    .item + .item{border-top:1px dotted #333}
+
+    .dock{border-top:4px solid var(--ink);padding:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .dock .grow{flex:1}
+
+    .resizer{position:absolute;top:0;right:-6px;width:12px;height:100%;cursor:ew-resize}
+
+    .intro{position:fixed;inset:0;background:rgba(0,0,0,.5);display:grid;place-items:center;z-index:20}
+    .modal{width:min(700px,92vw);background:#fff;border:4px solid var(--ink);border-radius:6px;overflow:hidden}
+    .modal header, .modal footer{padding:12px;border-bottom:4px solid var(--ink);display:flex;justify-content:space-between;align-items:center}
+    .modal footer{border-top:4px solid var(--ink);border-bottom:0}
+    .modal .body{padding:12px}
+    .langs{display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:8px}
+    .langitem{display:flex;align-items:center;gap:10px;border:3px solid var(--ink);border-radius:6px;padding:10px;background:#fff}
+    .muted{color:#444}
+
+    @media (max-width: 640px){ .langs{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+  <aside class="panel" id="panel">
+    <header>
+      <div class="brand">엔딩크레딧 번역 패널</div>
+      <div class="row">
+        <button id="btnManageLangs" class="btn" title="언어 선택">🌐 언어</button>
+        <button id="btnMic" class="btn" aria-pressed="false" title="마이크">마이크</button>
+        <button id="btnView" class="btn" title="기록보기">기록보기</button>
+        <button id="btnClear" class="btn" title="기록 삭제">기록삭제</button>
+        <button id="btnFontMinus" class="btn" title="글자 작게">A−</button>
+        <button id="btnFontPlus" class="btn" title="글자 크게">A+</button>
+      </div>
+      <div class="resizer" id="resizer" title="폭 조절"></div>
+    </header>
+
+    <div class="grid" id="grid"></div>
+
+    <div class="dock">
+      <select class="select" id="inputLang" title="음성 인식 언어">
+        <option value="ko-KR">한국어</option>
+        <option value="en-US">English</option>
+        <option value="vi-VN">Tiếng Việt</option>
+        <option value="uz-UZ">Oʻzbekcha</option>
+        <option value="ru-RU">Русский</option>
+      </select>
+      <input id="manualText" class="text grow" placeholder="문장을 입력하고 Enter 또는 ‘번역’" />
+      <button id="btnTranslate" class="btn primary">번역</button>
+    </div>
+  </aside>
+
+  <div class="intro" id="intro">
+    <div class="modal">
+      <header>
+        <strong>번역할 국가(언어) 선택</strong>
+        <span class="muted">기본: 한국어 → English. 복수 선택 가능</span>
+      </header>
+      <div class="body">
+        <div class="langs" id="langList"></div>
+      </div>
+      <footer>
+        <label class="muted"><input type="checkbox" id="chkRemember"> 다음에도 이 선택 유지</label>
+        <div class="row">
+          <button class="btn" id="btnReset">기본값</button>
+          <button class="btn primary" id="btnApply">확인</button>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <!-- 기록보기: 한국어(원문)만 표시 -->
+  <div class="intro" id="viewer" style="display:none">
+    <div class="modal" style="max-height:86vh; overflow:auto">
+      <header>
+        <strong>입력 원문(한국어) 기록</strong>
+        <button class="btn" id="btnViewerClose">닫기</button>
+      </header>
+      <div class="body" id="viewerBody"></div>
+    </div>
+  </div>
+
+  <script>
+    /**************** 설정 ****************/
+    const GOOGLE_TRANSLATE_API_KEY = 'PUT-YOUR-API-KEY-HERE';
+    const LANG_CATALOG = [
+      { code:'en', native:'English', flag:'https://flagcdn.com/w20/gb.png' },
+      { code:'vi', native:'Tiếng Việt', flag:'https://flagcdn.com/w20/vn.png' },
+      { code:'uz', native:'Oʻzbekcha', flag:'https://flagcdn.com/w20/uz.png' },
+      { code:'uz-Cyrl', native:'Ўзбекча', flag:'https://flagcdn.com/w20/uz.png' },
+      { code:'ru', native:'Русский', flag:'https://flagcdn.com/w20/ru.png' },
+      { code:'id', native:'Bahasa Indonesia', flag:'https://flagcdn.com/w20/id.png' },
+      { code:'th', native:'ไทย', flag:'https://flagcdn.com/w20/th.png' },
+      { code:'ja', native:'日本語', flag:'https://flagcdn.com/w20/jp.png' },
+      { code:'km', native:'ភាសាខ្មែរ', flag:'https://flagcdn.com/w20/kh.png' },
+      { code:'zh-CN', native:'简体中文', flag:'https://flagcdn.com/w20/cn.png' }
+    ];
+
+    let TARGETS = [];
+    let columns = [];                 // 열 DOM
+    const boxes = {};                 // code -> {viewport, track}
+    const historyMap = {};            // code -> [lines]
+    const sourceHistory = [];         // 한국어 원문만 저장 (기록보기 전용)
+
+    let controllerCode = null;        // 첫 번째 나라 코드
+
+    /**************** 음성 인식 ****************/
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const canSTT = !!SpeechRecognition; let rec=null, listening=false, sttBuffer='';
+
+    function setupSTT(){ if(!canSTT) return; rec = new SpeechRecognition(); rec.lang = inputLang.value || 'ko-KR'; rec.interimResults=true; rec.continuous=true;
+      rec.onresult = (e)=>{ let final=''; for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i]; if(r.isFinal) final += r[0].transcript.trim()+' ';} if(final) sttBuffer += final; };
+      rec.onend = ()=>{ if(listening===false){ const t=sttBuffer.trim(); sttBuffer=''; if(t) translateAndPush(t); } };
+    }
+    function startSTT(){ if(!canSTT){alert('이 브라우저는 음성 인식을 지원하지 않습니다.'); return;} if(!rec) setupSTT(); rec.lang=inputLang.value; sttBuffer=''; try{rec.start(); listening=true; setMic(true);}catch(e){} }
+    function stopSTT(){ if(!rec) return; listening=false; setMic(false); try{rec.stop();}catch(e){} }
+    function setMic(on){ btnMic.setAttribute('aria-pressed', on?'true':'false'); btnMic.textContent = on? '종료' : '마이크'; }
+
+    /**************** 번역 ****************/
+    async function translateText(text, target){
+      if(!GOOGLE_TRANSLATE_API_KEY || GOOGLE_TRANSLATE_API_KEY.includes('PUT-YOUR')){ await sleep(100); return `[DEMO] (${target}) `+text; }
+      const url = `https://translation.googleapis.com/language/translate/v2?key=${GOOGLE_TRANSLATE_API_KEY}`;
+      const payload = { q:text, target, format:'text' };
+      const res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(!res.ok) throw new Error('Translate API error');
+      const data = await res.json();
+      const t = data?.data?.translations?.[0]?.translatedText ?? '';
+      return decodeHTMLEntities(t);
+    }
+
+    async function translateAndPush(src){
+      // 원문(한국어) 기록 저장
+      sourceHistory.push(src);
+
+      const results = await Promise.all(TARGETS.map(t=> translateText(src, t.code).then(v=>({t,v}))));
+      results.forEach(({t,v})=> addLine(t.code, v));
+      syncScrollToBottom(); // 신규 데이터 들어오면 최신 유지
+    }
+
+    /**************** 레이아웃(기본 3행, 최대 4행) ****************/
+    const grid = document.getElementById('grid');
+    function computeRowsPerCol(){
+      // 기본을 3행으로, 글자 크기가 커지면 2/1행로 자동 감소, 아주 작으면 4행까지 허용
+      const rem = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--item-font')) || 1.6;
+      if(rem >= 3.0) return 1;
+      if(rem >= 2.2) return 2;
+      if(rem <= 1.1) return 4;
+      return 3; // 기본
+    }
+
+    function rebuildLayout(){
+      const rowsPerCol = computeRowsPerCol();
+      const colsNeeded = Math.ceil(TARGETS.length / rowsPerCol) || 1;
+      grid.style.gridTemplateColumns = `repeat(${colsNeeded}, minmax(0,1fr))`;
+      grid.innerHTML=''; columns = []; Object.keys(boxes).forEach(k=> delete boxes[k]);
+
+      for(let i=0;i<colsNeeded;i++){
+        const col = document.createElement('div'); col.className='col'; col.style.gridTemplateRows = `repeat(${rowsPerCol}, minmax(0,1fr))`;
+        grid.appendChild(col); columns.push(col);
+      }
+      TARGETS.forEach((t, idx)=>{
+        const colIdx = Math.floor(idx / rowsPerCol); const col = columns[colIdx];
+        const box = document.createElement('section'); box.className='langbox'; box.dataset.lang=t.code;
+        box.innerHTML = `<div class="label"><img class="flag" src="${t.flag}" alt="flag"><span>${t.native}</span></div>
+          <div class="viewport" data-lang="${t.code}"><div class="track"></div></div>`;
+        col.appendChild(box);
+        const viewport = box.querySelector('.viewport'); const track=box.querySelector('.track'); boxes[t.code]={viewport, track};
+        // 기존 히스토리 렌더링
+        (historyMap[t.code]||[]).forEach(line=>{ const item=document.createElement('div'); item.className='item'; item.textContent=line; track.appendChild(item); });
+      });
+      // 스크롤 마스터(첫 나라)
+      controllerCode = TARGETS[0]?.code || null;
+      bindScrolling();
+    }
+
+    /**************** 데이터/히스토리 ****************/
+    function addLine(code, text){
+      historyMap[code] = historyMap[code] || []; historyMap[code].push(text);
+      const b = boxes[code]; if(!b) return; const item=document.createElement('div'); item.className='item'; item.textContent=text; b.track.appendChild(item);
+    }
+
+    /**************** 스크롤: 첫 나라만 조작 허용, 나머지 전부 동기 ****************/
+    function bindScrolling(){
+      // 모든 viewport에서 스크롤은 보이되, 사용자 입력은 첫 나라만 허용
+      Object.entries(boxes).forEach(([code, {viewport}])=>{
+        if(code === controllerCode){
+          // 마스터: 사용자 스크롤 허용 + 스크롤 이벤트로 전체 동기화
+          viewport.addEventListener('scroll', onMasterScroll, {passive:true});
+        } else {
+          const stop = (e)=>{ e.preventDefault(); e.stopPropagation(); };
+          viewport.addEventListener('wheel', stop, {passive:false});
+          viewport.addEventListener('touchmove', stop, {passive:false});
+        }
+      });
+    }
+
+    function onMasterScroll(e){
+      const master = e.currentTarget;
+      const ratio = master.scrollTop / Math.max(1, master.scrollHeight - master.clientHeight);
+      syncAllToRatio(ratio);
+    }
+
+    function syncAllToRatio(ratio){
+      Object.entries(boxes).forEach(([code, {viewport}])=>{
+        if(code===controllerCode) return;
+        const max = Math.max(1, viewport.scrollHeight - viewport.clientHeight);
+        viewport.scrollTop = ratio * max;
+      });
+    }
+
+    function syncScrollToBottom(){
+      if(!controllerCode) return;
+      const master = boxes[controllerCode]?.viewport; if(!master) return;
+      master.scrollTop = master.scrollHeight;
+      syncAllToRatio(1);
+    }
+
+    /**************** 리사이즈/폰트 변화에 반응하여 재배치 ****************/
+    window.addEventListener('resize', debounce(()=>{ rebuildLayout(); }, 120));
+
+    /**************** 패널 리사이즈 ****************/
+    const resizer = document.getElementById('resizer');
+    const panel = document.getElementById('panel');
+    let drag=false,sx=0,sw=0;
+    resizer.addEventListener('mousedown',e=>{drag=true;sx=e.clientX;sw=panel.getBoundingClientRect().width;document.body.style.userSelect='none';});
+    window.addEventListener('mousemove',e=>{ if(!drag) return; const dx=e.clientX-sx; const nw=Math.max(window.innerWidth*0.25, Math.min(sw+dx, window.innerWidth*0.9)); setPanelWidth(nw); });
+    window.addEventListener('mouseup',()=>{ if(!drag) return; drag=false; document.body.style.userSelect=''; localStorage.setItem('panelW', getComputedStyle(document.documentElement).getPropertyValue('--panel-w')); rebuildLayout(); });
+    function setPanelWidth(px){ const vw=(px/window.innerWidth)*100; document.documentElement.style.setProperty('--panel-w', vw+'vw'); }
+    (function(){ const v=localStorage.getItem('panelW'); if(v) document.documentElement.style.setProperty('--panel-w', v.trim()); })();
+
+    /**************** 인트로(언어 선택) ****************/
+    const intro = document.getElementById('intro');
+    const langList = document.getElementById('langList');
+    function buildLangChecklist(){ langList.innerHTML=''; LANG_CATALOG.forEach((it, idx)=>{ const id='lang_'+it.code.replace(/[^a-zA-Z0-9]/g,'_'); const row=document.createElement('label'); row.className='langitem'; row.innerHTML=`<input type="checkbox" id="${id}" data-code="${it.code}" ${idx===0?'checked':''}><img class=\"flag\" src=\"${it.flag}\" alt=\"flag\"><span>${it.native}</span>`; langList.appendChild(row); }); }
+    function getSelectedTargets(){ const codes=[...langList.querySelectorAll('input:checked')].map(i=>i.dataset.code); if(!codes.length) return [{...LANG_CATALOG[0]}]; return codes.map(c=>LANG_CATALOG.find(x=>x.code===c)).filter(Boolean); }
+    function openIntro(){ buildLangChecklist(); intro.style.display='grid'; }
+    function closeIntro(){ intro.style.display='none'; }
+
+    document.getElementById('btnApply').addEventListener('click',()=>{
+      const list=getSelectedTargets(); TARGETS=list.map(x=>({code:x.code,native:x.native,flag:x.flag}));
+      if(document.getElementById('chkRemember').checked){ localStorage.setItem('targets', JSON.stringify(TARGETS)); } else { localStorage.removeItem('targets'); }
+      closeIntro(); rebuildLayout(); syncScrollToBottom();
+    });
+    document.getElementById('btnReset').addEventListener('click',()=>{ buildLangChecklist(); });
+    document.getElementById('btnManageLangs').addEventListener('click',()=>{ openIntro(); const saved = safeParse(localStorage.getItem('targets'))||[]; if(saved.length){ buildLangChecklist(); saved.forEach(s=>{ const id='lang_'+s.code.replace(/[^a-zA-Z0-9]/g,'_'); const cb=document.getElementById(id); if(cb) cb.checked=true; }); }});
+
+    (function initTargets(){ const saved=safeParse(localStorage.getItem('targets')); if(saved&&saved.length){ TARGETS=saved; closeIntro(); rebuildLayout(); syncScrollToBottom(); } else { openIntro(); } })();
+
+    /**************** 상호작용 ****************/
+    document.getElementById('btnTranslate').addEventListener('click',()=>{ const t=manualText.value.trim(); if(t){ translateAndPush(t); manualText.value=''; }});
+    document.getElementById('manualText').addEventListener('keydown',e=>{ if(e.key==='Enter'){ const t=e.currentTarget.value.trim(); if(t){ translateAndPush(t); e.currentTarget.value=''; } }});
+    document.getElementById('btnClear').addEventListener('click',()=>{ if(confirm('모든 번역 기록을 삭제할까요?')){ Object.keys(historyMap).forEach(k=>historyMap[k]=[]); sourceHistory.length = 0; rebuildLayout(); syncScrollToBottom(); }});
+    document.getElementById('btnView').addEventListener('click',()=> openViewer());
+
+    document.getElementById('btnMic').addEventListener('click',()=>{ listening? stopSTT() : startSTT(); });
+    const inputLang = document.getElementById('inputLang');
+    inputLang.addEventListener('change',()=>{ if(rec) rec.lang=inputLang.value; });
+
+    // 전역 글자 크기 일괄 변경 → 레이아웃 재계산
+    document.getElementById('btnFontMinus').addEventListener('click',()=> adjustFont(-0.2));
+    document.getElementById('btnFontPlus').addEventListener('click',()=> adjustFont(+0.2));
+    function adjustFont(delta){ const root=document.documentElement; const cur=parseFloat(getComputedStyle(root).getPropertyValue('--item-font'))||1.6; const next=clamp(cur+delta,0.8,5); root.style.setProperty('--item-font', next+'rem'); rebuildLayout(); syncScrollToBottom(); }
+
+    /**************** 기록 보기 (원문만) ****************/
+    function openViewer(){ const body = document.getElementById('viewerBody'); body.innerHTML=''; const ul=document.createElement('div'); ul.style.cssText='border:1px solid #bbb;border-radius:6px;padding:8px;max-height:60vh;overflow:auto;background:#fff'; sourceHistory.forEach(line=>{ const p=document.createElement('div'); p.textContent=line; p.style.padding='6px 0'; ul.appendChild(p); }); body.appendChild(ul); document.getElementById('viewer').style.display='grid'; }
+    document.getElementById('btnViewerClose').addEventListener('click',()=>{ document.getElementById('viewer').style.display='none'; });
+
+    /**************** 유틸 ****************/
+    const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+    function safeParse(x){ try{return JSON.parse(x);}catch{return null;} }
+    const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+    function decodeHTMLEntities(s){ const txt=document.createElement('textarea'); txt.innerHTML=s; return txt.value; }
+    function debounce(fn,ms){ let t=null; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
+
+    // STT 준비
+    const btnMic = document.getElementById('btnMic');
+    setupSTT();
+  </script>
+</body>
+</html>
