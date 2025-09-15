@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>엔딩크레딧형 다국어 번역 패널 · 첫 나라 스크롤 마스터 · 기본 3행(최대4)</title>
+  <title>엔딩크레딧형 다국어 번역 패널 · Chrome Translator translateStreaming() (강화판)</title>
   <style>
     :root{
       --panel-min: 25vw;   /* 최소 폭: 화면 1/4 */
@@ -48,13 +48,15 @@
     .langitem{display:flex;align-items:center;gap:10px;border:3px solid var(--ink);border-radius:6px;padding:10px;background:#fff}
     .muted{color:#444}
 
+    .toast{position:fixed;right:14px;bottom:14px;z-index:50;background:#111;color:#fff;border-radius:10px;padding:10px 14px;max-width:70vw;box-shadow:0 6px 20px rgba(0,0,0,.2);font-weight:700}
+
     @media (max-width: 640px){ .langs{grid-template-columns:1fr} }
   </style>
 </head>
 <body>
   <aside class="panel" id="panel">
     <header>
-      <div class="brand">엔딩크레딧 번역 패널</div>
+      <div class="brand">엔딩크레딧 번역 패널 · translateStreaming()</div>
       <div class="row">
         <button id="btnManageLangs" class="btn" title="언어 선택">🌐 언어</button>
         <button id="btnMic" class="btn" aria-pressed="false" title="마이크">마이크</button>
@@ -113,18 +115,20 @@
 
   <script>
     /**************** 설정 ****************/
+    // (폴백 전용) Google v2 키 – 크롬 Translator 미지원 언어/브라우저용
     const GOOGLE_TRANSLATE_API_KEY = 'PUT-YOUR-API-KEY-HERE';
+
     const LANG_CATALOG = [
       { code:'en', native:'English', flag:'https://flagcdn.com/w20/gb.png' },
-      { code:'vi', native:'Tiếng Việt(베트남어)', flag:'https://flagcdn.com/w20/vn.png' },
-      { code:'uz', native:'Oʻzbekcha(우즈베키스탄어)', flag:'https://flagcdn.com/w20/uz.png' },
-      { code:'uz-Cyrl', native:'Ўзбекча(우즈베키스탄어2)', flag:'https://flagcdn.com/w20/uz.png' },
-      { code:'ru', native:'Русский(러시아어)', flag:'https://flagcdn.com/w20/ru.png' },
-      { code:'id', native:'Bahasa Indonesia(인도네시아어)', flag:'https://flagcdn.com/w20/id.png' },
-      { code:'th', native:'ไทย(태국어)', flag:'https://flagcdn.com/w20/th.png' },
-      { code:'ja', native:'日本語(일본어)', flag:'https://flagcdn.com/w20/jp.png' },
-      { code:'km', native:'ភាសាខ្មែរ(캄보디아어)', flag:'https://flagcdn.com/w20/kh.png' },
-      { code:'zh-CN', native:'简体中文(중국어)', flag:'https://flagcdn.com/w20/cn.png' }
+      { code:'vi', native:'Tiếng Việt', flag:'https://flagcdn.com/w20/vn.png' },
+      { code:'uz', native:'Oʻzbekcha', flag:'https://flagcdn.com/w20/uz.png' },
+      { code:'uz-Cyrl', native:'Ўзбекча', flag:'https://flagcdn.com/w20/uz.png' },
+      { code:'ru', native:'Русский', flag:'https://flagcdn.com/w20/ru.png' },
+      { code:'id', native:'Bahasa Indonesia', flag:'https://flagcdn.com/w20/id.png' },
+      { code:'th', native:'ไทย', flag:'https://flagcdn.com/w20/th.png' },
+      { code:'ja', native:'日本語', flag:'https://flagcdn.com/w20/jp.png' },
+      { code:'km', native:'ភាសាខ្មែរ', flag:'https://flagcdn.com/w20/kh.png' },
+      { code:'zh-CN', native:'简体中文', flag:'https://flagcdn.com/w20/cn.png' }
     ];
 
     let TARGETS = [];
@@ -135,21 +139,73 @@
 
     let controllerCode = null;        // 첫 번째 나라 코드
 
+    // 스트리밍 취소 토큰(신규 입력 시 기존 스트림 중단)
+    let streamingToken = 0;
+
     /**************** 음성 인식 ****************/
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const canSTT = !!SpeechRecognition; let rec=null, listening=false, sttBuffer='';
 
     function setupSTT(){ if(!canSTT) return; rec = new SpeechRecognition(); rec.lang = inputLang.value || 'ko-KR'; rec.interimResults=true; rec.continuous=true;
       rec.onresult = (e)=>{ let final=''; for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i]; if(r.isFinal) final += r[0].transcript.trim()+' ';} if(final) sttBuffer += final; };
-      rec.onend = ()=>{ if(listening===false){ const t=sttBuffer.trim(); sttBuffer=''; if(t) translateAndPush(t); } };
+      rec.onend = ()=>{ if(listening===false){ const t=sttBuffer.trim(); sttBuffer=''; if(t) translateAndPushStreaming(t); } };
     }
     function startSTT(){ if(!canSTT){alert('이 브라우저는 음성 인식을 지원하지 않습니다.'); return;} if(!rec) setupSTT(); rec.lang=inputLang.value; sttBuffer=''; try{rec.start(); listening=true; setMic(true);}catch(e){} }
     function stopSTT(){ if(!rec) return; listening=false; setMic(false); try{rec.stop();}catch(e){} }
     function setMic(on){ btnMic.setAttribute('aria-pressed', on?'true':'false'); btnMic.textContent = on? '종료' : '마이크'; }
 
-    /**************** 번역 ****************/
-    async function translateText(text, target){
-      if(!GOOGLE_TRANSLATE_API_KEY || GOOGLE_TRANSLATE_API_KEY.includes('PUT-YOUR')){ await sleep(100); return `[DEMO] (${target}) `+text; }
+    /**************** Chrome Translator API (translateStreaming) ****************/
+    const translators = new Map(); // to(lang) -> Translator instance
+
+    function isTranslatorSupported(){ return 'Translator' in self; }
+    function isStreamingSupported(inst){ return inst && typeof inst.translateStreaming === 'function'; }
+
+    async function getTranslator(to){
+      if(!isTranslatorSupported()) throw new Error('Chrome Translator API 미지원 브라우저');
+      if(translators.has(to)) return translators.get(to);
+      // 언어팩 가능 여부 확인
+      const cap = await Translator.availability({ sourceLanguage:'ko', targetLanguage: to });
+      if(cap === 'unavailable') throw new Error(`Translator(${to}) 미지원(언어팩 없음)`);
+      const t = await Translator.create({ sourceLanguage:'ko', targetLanguage: to });
+      translators.set(to, t);
+      return t;
+    }
+
+    async function translateStreamingOne(text, to, item, token){
+      let out = '';
+      try{
+        const t = await getTranslator(to);
+        ensureLatestPinnedOnce();
+        if(isStreamingSupported(t)){
+          // 스트리밍 루프
+          for await (const chunk of t.translateStreaming(text)){
+            if(token !== streamingToken) return; // 신규 입력으로 취소
+            out += chunk; item.textContent = out;
+          }
+        } else {
+          // 스트리밍 미지원 → 단건 번역
+          out = await t.translate(text); item.textContent = out;
+        }
+      }catch(err){
+        // 크롬 오류 문구 노출 & 폴백
+        toastError(`[${to}] ${err.name||'Error'}: ${err.message||'Other generic failures occurred.'}`);
+        try{
+          // 마지막 폴백: Google v2
+          out = await translateTextFallback(text, to);
+          item.textContent = out;
+        }catch(err2){
+          item.textContent = `[오류] ${String(err2)}`;
+        }
+      }
+      historyMap[to] = historyMap[to] || []; historyMap[to].push(out);
+      syncScrollToBottom();
+    }
+
+    // Google v2 폴백 (키가 설정된 경우에만)
+    async function translateTextFallback(text, target){
+      if(!GOOGLE_TRANSLATE_API_KEY || GOOGLE_TRANSLATE_API_KEY.includes('PUT-YOUR')){
+        await sleep(50); return `[DEMO] (${target}) ${text}`;
+      }
       const url = `https://translation.googleapis.com/language/translate/v2?key=${GOOGLE_TRANSLATE_API_KEY}`;
       const payload = { q:text, target, format:'text' };
       const res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -159,19 +215,34 @@
       return decodeHTMLEntities(t);
     }
 
-    async function translateAndPush(src){
-      // 원문(한국어) 기록 저장
+    /**************** 번역 흐름 (스트리밍) ****************/
+    async function translateAndPushStreaming(src){
+      // 이전 스트림 취소 토큰 갱신
+      streamingToken++;
+      const myToken = streamingToken;
+      // 한국어 원문 기록 저장
       sourceHistory.push(src);
-
-      const results = await Promise.all(TARGETS.map(t=> translateText(src, t.code).then(v=>({t,v}))));
-      results.forEach(({t,v})=> addLine(t.code, v));
-      syncScrollToBottom(); // 신규 데이터 들어오면 최신 유지
+      // 각 타깃 언어에 스트리밍 자리(아이템) 먼저 만들어 둠
+      const placeholders = TARGETS.map(t=>({ code: t.code, item: addStreamingPlaceholder(t.code) }));
+      syncScrollToBottom();
+      await Promise.all(
+        placeholders.map(p=> translateStreamingOne(src, p.code, p.item, myToken))
+      );
     }
+
+    function addStreamingPlaceholder(code){
+      const b = boxes[code]; if(!b) return null;
+      const item = document.createElement('div'); item.className='item'; item.textContent = '…';
+      b.track.appendChild(item);
+      return item;
+    }
+
+    let latestPinnedOnce = false;
+    function ensureLatestPinnedOnce(){ if(latestPinnedOnce) return; latestPinnedOnce = true; syncScrollToBottom(); setTimeout(()=>latestPinnedOnce=false, 500); }
 
     /**************** 레이아웃(기본 3행, 최대 4행) ****************/
     const grid = document.getElementById('grid');
     function computeRowsPerCol(){
-      // 기본을 3행으로, 글자 크기가 커지면 2/1행로 자동 감소, 아주 작으면 4행까지 허용
       const rem = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--item-font')) || 1.6;
       if(rem >= 3.0) return 1;
       if(rem >= 2.2) return 2;
@@ -192,19 +263,17 @@
       TARGETS.forEach((t, idx)=>{
         const colIdx = Math.floor(idx / rowsPerCol); const col = columns[colIdx];
         const box = document.createElement('section'); box.className='langbox'; box.dataset.lang=t.code;
-        box.innerHTML = `<div class="label"><img class="flag" src="${t.flag}" alt="flag"><span>${t.native}</span></div>
-          <div class="viewport" data-lang="${t.code}"><div class="track"></div></div>`;
+        box.innerHTML = `<div class=\"label\"><img class=\"flag\" src=\"${t.flag}\" alt=\"flag\"><span>${t.native}</span></div>
+          <div class=\"viewport\" data-lang=\"${t.code}\"><div class=\"track\"></div></div>`;
         col.appendChild(box);
         const viewport = box.querySelector('.viewport'); const track=box.querySelector('.track'); boxes[t.code]={viewport, track};
-        // 기존 히스토리 렌더링
         (historyMap[t.code]||[]).forEach(line=>{ const item=document.createElement('div'); item.className='item'; item.textContent=line; track.appendChild(item); });
       });
-      // 스크롤 마스터(첫 나라)
       controllerCode = TARGETS[0]?.code || null;
       bindScrolling();
     }
 
-    /**************** 데이터/히스토리 ****************/
+    /**************** 데이터/히스토리(비스트리밍용만 사용) ****************/
     function addLine(code, text){
       historyMap[code] = historyMap[code] || []; historyMap[code].push(text);
       const b = boxes[code]; if(!b) return; const item=document.createElement('div'); item.className='item'; item.textContent=text; b.track.appendChild(item);
@@ -212,10 +281,9 @@
 
     /**************** 스크롤: 첫 나라만 조작 허용, 나머지 전부 동기 ****************/
     function bindScrolling(){
-      // 모든 viewport에서 스크롤은 보이되, 사용자 입력은 첫 나라만 허용
       Object.entries(boxes).forEach(([code, {viewport}])=>{
+        viewport.onwheel = null; viewport.ontouchmove = null; viewport.onscroll = null;
         if(code === controllerCode){
-          // 마스터: 사용자 스크롤 허용 + 스크롤 이벤트로 전체 동기화
           viewport.addEventListener('scroll', onMasterScroll, {passive:true});
         } else {
           const stop = (e)=>{ e.preventDefault(); e.stopPropagation(); };
@@ -275,11 +343,17 @@
     document.getElementById('btnReset').addEventListener('click',()=>{ buildLangChecklist(); });
     document.getElementById('btnManageLangs').addEventListener('click',()=>{ openIntro(); const saved = safeParse(localStorage.getItem('targets'))||[]; if(saved.length){ buildLangChecklist(); saved.forEach(s=>{ const id='lang_'+s.code.replace(/[^a-zA-Z0-9]/g,'_'); const cb=document.getElementById(id); if(cb) cb.checked=true; }); }});
 
-    (function initTargets(){ const saved=safeParse(localStorage.getItem('targets')); if(saved&&saved.length){ TARGETS=saved; closeIntro(); rebuildLayout(); syncScrollToBottom(); } else { openIntro(); } })();
+    (function initTargets(){
+      // 브라우저 지원 안내
+      if(!isTranslatorSupported()){
+        toastError('이 브라우저는 Chrome Translator API를 지원하지 않습니다. Chrome 138+를 사용하거나 폴백(API 키)을 설정하세요.');
+      }
+      const saved=safeParse(localStorage.getItem('targets')); if(saved&&saved.length){ TARGETS=saved; closeIntro(); rebuildLayout(); syncScrollToBottom(); } else { openIntro(); }
+    })();
 
     /**************** 상호작용 ****************/
-    document.getElementById('btnTranslate').addEventListener('click',()=>{ const t=manualText.value.trim(); if(t){ translateAndPush(t); manualText.value=''; }});
-    document.getElementById('manualText').addEventListener('keydown',e=>{ if(e.key==='Enter'){ const t=e.currentTarget.value.trim(); if(t){ translateAndPush(t); e.currentTarget.value=''; } }});
+    document.getElementById('btnTranslate').addEventListener('click',()=>{ const t=manualText.value.trim(); if(t){ translateAndPushStreaming(t); manualText.value=''; }});
+    document.getElementById('manualText').addEventListener('keydown',e=>{ if(e.key==='Enter'){ const t=e.currentTarget.value.trim(); if(t){ translateAndPushStreaming(t); e.currentTarget.value=''; } }});
     document.getElementById('btnClear').addEventListener('click',()=>{ if(confirm('모든 번역 기록을 삭제할까요?')){ Object.keys(historyMap).forEach(k=>historyMap[k]=[]); sourceHistory.length = 0; rebuildLayout(); syncScrollToBottom(); }});
     document.getElementById('btnView').addEventListener('click',()=> openViewer());
 
@@ -297,6 +371,7 @@
     document.getElementById('btnViewerClose').addEventListener('click',()=>{ document.getElementById('viewer').style.display='none'; });
 
     /**************** 유틸 ****************/
+    function toastError(msg){ const t=document.createElement('div'); t.className='toast'; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), 4000); }
     const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
     function safeParse(x){ try{return JSON.parse(x);}catch{return null;} }
     const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
@@ -309,5 +384,3 @@
   </script>
 </body>
 </html>
-
-
