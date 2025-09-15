@@ -7,13 +7,13 @@
   <style>
     :root{
       --panel-min: 25vw;   /* 최소 폭: 화면 1/4 */
-      --panel-w: 36vw;     /* 초기 폭 */
+      --panel-w: 100%;     /* 초기 폭 */
       --bg: #f6f7fb; --ink: #111; --muted:#555;
       --item-font: 1.6rem; /* 전역 글자 크기(일괄 변경) */
     }
     html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
 
-    .panel{position:fixed;inset:0 auto 0 0;height:100%;width:clamp(var(--panel-min), var(--panel-w), 90vw);background:#fff;border-right:4px solid var(--ink);display:flex;flex-direction:column}
+    .panel{position:fixed;inset:0 auto 0 0;height:100%;width:99%;background:#fff;border-right:4px solid var(--ink);display:flex;flex-direction:column}
     .panel header{padding:10px 12px;border-bottom:4px solid var(--ink);display:flex;gap:10px;align-items:center;justify-content:space-between}
     .brand{font-weight:900;letter-spacing:.2px}
     .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -309,3 +309,4 @@
   </script>
 </body>
 </html>
+
