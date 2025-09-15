@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>Tube Flow Simulator — Sticky UI · 3-per-row Buttons · Dynamic Tube Count</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --bg:#0b1220; --panel:rgba(255,255,255,.06); --bdr:rgba(255,255,255,.12);
+    --muted:#a9b3c7; --ok:#6bff9f; --warn:#ffb86b; --bad:#ff6b6b;
+    --blur: blur(6px);
+  }
+  html,body{height:100%;margin:0;background:var(--bg);color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  /* 페이지 전체 스크롤 → sticky가 동작하도록 함 */
+  .wrap{display:grid;grid-template-rows:auto 1fr;min-height:100vh;width:100vw}
+
+  /* 상단 UI (sticky 고정) */
+  #uiPanel{
+    position: sticky; top:0; z-index: 50;
+    background: color-mix(in oklab, #0b1220 85%, transparent);
+    backdrop-filter: var(--blur);
+    border-bottom:1px solid var(--bdr); padding:12px; box-sizing:border-box;
+  }
+  h2{margin:.2rem 0 .6rem}
+  .muted{color:var(--muted)} .mini{font-size:.9rem}
+  .row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .card{background:rgba(255,255,255,.04);border:1px solid var(--bdr);border-radius:12px;padding:10px}
+
+  /* 버튼: 행별 3개 고정 */
+  .btn-grid{display:grid;gap:10px;grid-template-columns:repeat(3, minmax(140px, 1fr))}
+  .btn{display:inline-flex;justify-content:center;gap:6px;align-items:center;background:#13345a;border:1px solid var(--bdr);border-radius:10px;color:#e9eef6;padding:10px 12px;cursor:pointer;user-select:none}
+  .btn:active{transform:translateY(1px)}
+  .btn.toggle.on{background:#1e5aa0}
+
+  /* 튜브 카드 그리드: 갯수에 따라 자동 줄바꿈 */
+  .tube-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .tube-row{display:grid;grid-template-columns:64px 1fr;gap:8px;align-items:center}
+  input[type=number],input[type=range]{width:100%;background:#0e172b;border:1px solid var(--bdr);color:#e9eef6;border-radius:8px;padding:8px 10px;box-sizing:border-box}
+  input[type=range]{height:30px}
+
+  /* 하단: 결과/시각화 전환 (페이지가 스크롤) */
+  #bottomPanel{position:relative; padding:12px}
+  #resultsPane{display:block}
+  #vizPane{position:relative;display:none;min-height:40vh;border:1px solid var(--bdr);border-radius:12px;overflow:hidden}
+  #stage{position:absolute;inset:0;display:block}
+
+  table{width:100%;border-collapse:collapse}
+  th,td{border-bottom:1px solid var(--bdr);padding:8px 10px;text-align:right;font-variant-numeric:tabular-nums}
+  th:first-child,td:first-child{text-align:left}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+
+  /* 모바일 최소 대응(요청이 행별 3개 고정이므로 3열 유지, 영역은 줄바꿈으로 처리) */
+  @media (max-width: 900px){
+   
+    input[type=number],input[type=range]{padding:12px}
+    .btn{padding:12px}
+    table{font-size:.95rem}
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- 상단 UI (sticky) -->
+    <section id="uiPanel">
+      <h2>Tube Flow Simulator <span class="mini muted">Hagen–Poiseuille (Laminar) · 저장 기준 <b>KST 09:00</b></span></h2>
+
+      <div class="card">
+        <div class="mini muted">단위: D[mm], L[m], ΔP[kPa] · 물(20℃): μ=0.001002 Pa·s, ρ=998 kg/m³ · 시각화는 직경만 배율 적용(계산은 실제 단위)</div>
+        <div class="row" style="margin-top:8px">
+          <label>점도 μ (Pa·s)<input id="mu" type="number" min="0.0001" step="0.0001" value="0.001002"></label>
+          <label>밀도 ρ (kg/m³)<input id="rho" type="number" min="100" step="1" value="998"></label>
+        </div>
+
+        <!-- 튜브 개수 조절 -->
+        <div class="row" style="margin-top:8px">
+          <label>튜브 개수
+            <input id="tubeCount" type="number" min="1" max="50" step="1" value="2" />
+          </label>
+          <div class="mini muted" style="align-self:end">개수 변경 시 아래 설정/결과가 자동 반영됩니다.</div>
+        </div>
+
+        <!-- 버튼: 행별 3개 고정 -->
+        <div class="btn-grid" style="margin-top:10px">
+          <button id="btnReset" class="btn">초기화(기본값)</button>
+          <button id="btnCSV" class="btn">CSV 내보내기</button>
+          <button id="btnSave" class="btn">임시저장</button>
+
+          <button id="btnClear" class="btn">임시저장 삭제</button>
+          <button id="btnStartToday" class="btn">오늘로 초기화</button>
+          <button id="btnToggleViz" class="btn toggle" aria-pressed="false">시각화: OFF</button>
+        </div>
+
+        <div class="mini muted" id="saveInfo" style="margin-top:8px"></div>
+      </div>
+    </section>
+      <div class="card" style="margin-top:10px">
+        <h3 style="margin:.2rem 0 .6rem">튜브 설정 (<span id="tubeCountLabel">2</span>개)</h3>
+        <div id="tubeControls" class="tube-grid"></div>
+      </div>
+
+
+    <!-- 하단: 기본=결과 카드, 시각화 ON 시 캔버스 -->
+    <section id="bottomPanel">
+      <div id="resultsPane">
+        <div class="card" style="margin-top:10px">
+          <h3 style="margin:.2rem 0 .6rem">결과(실시간)</h3>
+          <div class="mini muted">Q(m³/s, L/min) · v(m/s) · Re · dP/m(Pa/m)</div>
+          <table id="resultTable"><thead>
+            <tr><th>Tube</th><th>D(mm)</th><th>L(m)</th><th>ΔP(kPa)</th><th>Q(m³/s)</th><th>L/min</th><th>v(m/s)</th><th>Re</th><th>dP/m</th><th>Laminar</th></tr>
+          </thead><tbody></tbody></table>
+        </div>
+      </div>
+
+      <div id="vizPane">
+        <canvas id="stage"></canvas>
+      </div>
+    </section>
+  </div>
+
+  <!-- three.js -->
+  <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+
+  <script>
+  /* ===== 공통 상태/유틸 ===== */
+  const STORAGE_KEY='tubeFlowState';
+  const STORAGE_DATE_KEY='tubeFlowStateDate';
+  const SAVE_INFO = document.getElementById('saveInfo');
+
+  // 한국시간 09:00 기준 업무일 키
+  function nowInKST(){
+    const now=new Date();
+    return new Date(now.getTime() + (9*60 + now.getTimezoneOffset())*60000);
+  }
+  function businessDayKeyKST(){
+    const kst=nowInKST();
+    if(kst.getHours()<9) kst.setDate(kst.getDate()-1);
+    const y=kst.getFullYear(), m=String(kst.getMonth()+1).padStart(2,'0'), d=String(kst.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}-@09KST`;
+  }
+
+  // 길이 분포 유틸(개수 바뀌어도 균등 분배)
+  function baseLength(i, N){
+    const span = 4.5;
+    const denom = Math.max(1, N-1);
+    return +(0.5 + (span/denom)*i).toFixed(3);
+  }
+
+  // 데이터(초기: 2개, 직경 1.00 mm)
+  let mu=0.001002, rho=998;
+  let N = 2;
+  let tubes = [];
+  function makeDefaultTubes(count){
+    return [...Array(count)].map((_,i)=>({
+      id:i+1, diameter_mm:1.00, length_m:baseLength(i, count), deltaP_kPa:50,
+      area_m2:0, flow_m3_s:0, flow_L_min:0, velocity_m_s:0, Re:0, dP_per_m:0, laminar:true
+    }));
+  }
+  tubes = makeDefaultTubes(N);
+
+  // UI 요소
+  const tubeControls=document.getElementById('tubeControls');
+  const tubeCountInput=document.getElementById('tubeCount');
+  const tubeCountLabel=document.getElementById('tubeCountLabel');
+  const tbody=document.querySelector('#resultTable tbody');
+  const btnToggleViz=document.getElementById('btnToggleViz');
+  const resultsPane=document.getElementById('resultsPane');
+  const vizPane=document.getElementById('vizPane');
+
+  /* ===== 튜브 개수 변경 ===== */
+  function setTubeCount(newN){
+    newN = Math.max(1, Math.min(50, Math.floor(newN||1)));
+    if(newN === N) return;
+    // 기존 값 유지 + 부족분 기본 추가 / 초과분 제거
+    const next = makeDefaultTubes(newN);
+    // 기존 값 이월
+    for(let i=0;i<Math.min(N,newN);i++){
+      next[i].diameter_mm = tubes[i].diameter_mm;
+      next[i].length_m    = tubes[i].length_m;
+      next[i].deltaP_kPa  = tubes[i].deltaP_kPa;
+    }
+    tubes = next; N = newN;
+    tubeCountInput.value = N;
+    tubeCountLabel.textContent = N;
+    buildTubeControls();
+    updateAll();
+    if(vizInitialized && vizOn) rebuildMeshes();
+  }
+  tubeCountInput.addEventListener('change', e => setTubeCount(+e.target.value));
+
+  /* ===== 컨트롤 빌드 ===== */
+  function buildTubeControls(){
+    tubeControls.innerHTML='';
+    tubes.forEach(t=>{
+      const card=document.createElement('div'); card.className='card';
+      card.innerHTML=`
+        <div class="tube-row"><div><b>T${String(t.id).padStart(2,'0')}</b></div><div class="mini muted">직경·길이·압력강하</div></div>
+        <label class="mini">직경 D(mm)<input type="number" step="0.01" min="0.10" max="2.00" value="${t.diameter_mm}" data-id="${t.id}" data-key="diameter_mm"></label>
+        <input type="range" min="0.10" max="2.00" step="0.01" value="${t.diameter_mm}" data-id="${t.id}" data-key="diameter_mm">
+        <label class="mini">길이 L(m)<input type="number" step="0.01" min="0.05" max="20" value="${t.length_m}" data-id="${t.id}" data-key="length_m"></label>
+        <input type="range" min="0.05" max="20" step="0.01" value="${t.length_m}" data-id="${t.id}" data-key="length_m">
+        <label class="mini">ΔP(kPa)<input type="number" step="0.1" min="0.1" max="500" value="${t.deltaP_kPa}" data-id="${t.id}" data-key="deltaP_kPa"></label>
+        <input type="range" min="0.1" max="500" step="0.1" value="${t.deltaP_kPa}" data-id="${t.id}" data-key="deltaP_kPa">`;
+      tubeControls.appendChild(card);
+    });
+    tubeControls.querySelectorAll('input').forEach(el=>{
+      el.addEventListener('input',e=>{
+        const id=+e.target.dataset.id, key=e.target.dataset.key, val=+e.target.value;
+        const t=tubes.find(x=>x.id===id); if(!t) return;
+        if(key==='diameter_mm'){ t[key]=Math.min(2, Math.max(0.10, val)); } else { t[key]=val; }
+        tubeControls.querySelectorAll(`input[data-id="${id}"][data-key="${key}"]`).forEach(sib=>{ if(sib!==e.target) sib.value=t[key]; });
+        updateAll();
+      });
+    });
+    tubeCountLabel.textContent = N;
+  }
+
+  /* ===== 계산/테이블 ===== */
+  function computeTube(t){
+    const D=t.diameter_mm/1000, r=D/2, L=t.length_m, dP=t.deltaP_kPa*1000;
+    if(L<=0||D<=0||mu<=0||rho<=0){
+      t.flow_m3_s=t.flow_L_min=t.velocity_m_s=t.Re=t.dP_per_m=NaN; t.laminar=false; return;
+    }
+    const Q=dP*Math.PI*Math.pow(r,4)/(8*mu*L); // m³/s
+    const A=Math.PI*r*r;
+    const v=A>0?Q/A:0;
+    const Re=(mu>0&&D>0)?(rho*v*D/mu):NaN;
+
+    t.area_m2=A; t.flow_m3_s=Q; t.flow_L_min=Q*60000; t.velocity_m_s=v; t.Re=Re; t.dP_per_m=L>0?dP/L:0; t.laminar=isFinite(Re)&&Re<2000;
+  }
+
+  function renderTable(){
+    tbody.innerHTML='';
+    tubes.forEach(t=>{
+      const cls = isNaN(t.Re)?'warn':(t.Re<2000?'ok':(t.Re<4000?'warn':'bad'));
+      const tr=document.createElement('tr');
+      tr.innerHTML=`
+        <td>T${String(t.id).padStart(2,'0')}</td>
+        <td>${t.diameter_mm.toFixed(2)}</td>
+        <td>${t.length_m.toFixed(2)}</td>
+        <td>${t.deltaP_kPa.toFixed(1)}</td>
+        <td>${isFinite(t.flow_m3_s)?t.flow_m3_s.toExponential(3):'—'}</td>
+        <td>${isFinite(t.flow_L_min)?t.flow_L_min.toFixed(3):'—'}</td>
+        <td>${isFinite(t.velocity_m_s)?t.velocity_m_s.toFixed(4):'—'}</td>
+        <td class="${cls}">${isFinite(t.Re)?t.Re.toFixed(1):'—'}</td>
+        <td>${isFinite(t.dP_per_m)?t.dP_per_m.toFixed(1):'—'}</td>
+        <td class="${cls}">${isFinite(t.Re)?(t.Re<2000?'OK':(t.Re<4000?'주의':'비권장')):'—'}</td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function updateAll(){
+    mu=+document.getElementById('mu').value; rho=+document.getElementById('rho').value;
+    tubes.forEach(computeTube); renderTable();
+    if(vizInitialized && vizOn) rebuildMeshes();
+  }
+
+  /* ===== CSV ===== */
+  document.getElementById('btnCSV').addEventListener('click',()=>{
+    const header=['tube_id','diameter_mm','length_m','deltaP_kPa','area_m2','flow_m3_s','flow_L_min','velocity_m_s','Re','dP_per_m_Pa_m','laminar'];
+    const rows=tubes.map(t=>['T'+String(t.id).padStart(2,'0'),t.diameter_mm,t.length_m,t.deltaP_kPa,t.area_m2,t.flow_m3_s,t.flow_L_min,t.velocity_m_s,t.Re,t.dP_per_m,t.laminar]);
+    const csv=[header.join(','),...rows.map(r=>r.join(','))].join('\n');
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+    a.download='tube_results.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  /* ===== 저장/복원 (KST 09:00) ===== */
+  function stampInfo(text){ SAVE_INFO.textContent=text; }
+  function saveState(){
+    const state={ mu: document.getElementById('mu').value, rho: document.getElementById('rho').value,
+      tubes: tubes.map(t=>({id:t.id,diameter_mm:t.diameter_mm,length_m:t.length_m,deltaP_kPa:t.deltaP_kPa})),
+      savedAt: new Date().toISOString(), N
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_DATE_KEY, businessDayKeyKST());
+    stampInfo(`저장됨: ${businessDayKeyKST()}`);
+  }
+  function loadStateIfBusinessDay(){
+    const saved = localStorage.getItem(STORAGE_KEY);
+    const savedKey = localStorage.getItem(STORAGE_DATE_KEY);
+    const todayKey = businessDayKeyKST();
+    if(!saved){ stampInfo('저장 없음'); return; }
+    if(savedKey !== todayKey){
+      if(savedKey) localStorage.setItem(`tubeFlowState_prev_${savedKey}`, saved);
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.setItem(STORAGE_DATE_KEY, todayKey);
+      stampInfo('KST 09:00 기준 변경 · 오늘 새로 시작');
+      return;
+    }
+    try{
+      const state=JSON.parse(saved);
+      document.getElementById('mu').value=state.mu;
+      document.getElementById('rho').value=state.rho;
+      N = Math.max(1, Math.min(50, state.N || state.tubes?.length || 2));
+      tubes = makeDefaultTubes(N);
+      state.tubes.forEach((s,i)=>{ if(tubes[i]){ tubes[i].diameter_mm=s.diameter_mm; tubes[i].length_m=s.length_m; tubes[i].deltaP_kPa=s.deltaP_kPa; }});
+      tubeCountInput.value=N; tubeCountLabel.textContent=N;
+      buildTubeControls(); updateAll();
+      stampInfo('복원됨: ${savedKey}');
+    }catch(e){ console.warn(e); stampInfo('복원 실패'); }
+  }
+  function clearSaved(){ localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(STORAGE_DATE_KEY); stampInfo('임시저장 삭제됨'); }
+  function startFreshToday(){
+    const saved = localStorage.getItem(STORAGE_KEY);
+    const savedKey = localStorage.getItem(STORAGE_DATE_KEY) || businessDayKeyKST();
+    if(saved && savedKey) localStorage.setItem('tubeFlowState_prev_${savedKey}', saved);
+    clearSaved();
+    document.getElementById('btnReset').click();
+    localStorage.setItem(STORAGE_DATE_KEY, businessDayKeyKST());
+    stampInfo('오늘로 초기화(09:00 기준)');
+  }
+
+  document.getElementById('btnSave').addEventListener('click', saveState);
+  document.getElementById('btnClear').addEventListener('click', clearSaved);
+  document.getElementById('btnStartToday').addEventListener('click', startFreshToday);
+
+  /* ===== 초기화 버튼 ===== */
+  document.getElementById('btnReset').addEventListener('click',()=>{
+    mu=0.001002; rho=998;
+    document.getElementById('mu').value=mu; document.getElementById('rho').value=rho;
+    tubes = makeDefaultTubes(N);
+    buildTubeControls(); updateAll();
+  });
+
+  /* ===== 시각화 (기본 OFF) ===== */
+  let vizOn=false;
+  let vizInitialized=false, scene, camera, renderer, controls, tubeGroup;
+  const DIAMETER_SCALE=300;     // 직경만 확대
+  const MIN_VISUAL_RADIUS=0.02; // 최소 표시 반지름
+  let rafId=null;
+
+  class SimpleOrbitControls{
+    constructor(camera, dom){ this.camera=camera; this.domElement=dom; this.target=new THREE.Vector3(); this.enableDamping=true; this.dampingFactor=0.05;
+      this.spherical=new THREE.Spherical(); this.sphericalDelta=new THREE.Spherical(); this.scale=1;
+      this.rotateStart=new THREE.Vector2(); this.rotateEnd=new THREE.Vector2(); this.rotateDelta=new THREE.Vector2(); this.isRot=false;
+      dom.addEventListener('mousedown',e=>{ if(e.button===0){ this.isRot=true; this.rotateStart.set(e.clientX,e.clientY);} });
+      dom.addEventListener('mousemove',e=>{ if(!this.isRot) return; this.rotateEnd.set(e.clientX,e.clientY); this.rotateDelta.subVectors(this.rotateEnd,this.rotateStart);
+        this.sphericalDelta.theta -= 2*Math.PI*this.rotateDelta.x/this.domElement.clientHeight;
+        this.sphericalDelta.phi   -= 2*Math.PI*this.rotateDelta.y/this.domElement.clientHeight; this.rotateStart.copy(this.rotateEnd);});
+      dom.addEventListener('mouseup',()=>{ this.isRot=false; }); dom.addEventListener('wheel',e=>{ this.scale *= (e.deltaY<0)?0.95:1.05; });
+    }
+    update(){ const off=new THREE.Vector3(); const q=new THREE.Quaternion().setFromUnitVectors(this.camera.up,new THREE.Vector3(0,1,0)); const qi=q.clone().invert();
+      off.copy(this.camera.position).sub(this.target).applyQuaternion(q);
+      const s=this.spherical, sd=this.sphericalDelta;
+      s.setFromVector3(off); s.theta+=sd.theta; s.phi+=sd.phi; s.radius*=this.scale;
+      s.phi=Math.max(0.1,Math.min(Math.PI-0.1,s.phi)); s.radius=Math.max(1,Math.min(100,s.radius));
+      off.setFromSpherical(s).applyQuaternion(qi); this.camera.position.copy(this.target).add(off); this.camera.lookAt(this.target);
+      if(this.enableDamping){ sd.theta*=0.9; sd.phi*=0.9; this.scale=1+(this.scale-1)*0.9; } else { sd.set(0,0,0); this.scale=1; }
+    }
+  }
+
+  function initThree(){
+    if(vizInitialized) return;
+    const stage=document.getElementById('stage');
+    renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance',canvas:stage});
+    scene=new THREE.Scene(); scene.background=new THREE.Color(0x0b1220);
+    camera=new THREE.PerspectiveCamera(55,1,0.1,5000); camera.position.set(6,4,12);
+    controls=new SimpleOrbitControls(camera,renderer.domElement); controls.enableDamping=true;
+    scene.add(new THREE.AmbientLight(0xffffff,0.6));
+    const dir=new THREE.DirectionalLight(0xffffff,1.0); dir.position.set(6,12,8); scene.add(dir);
+    scene.add(new THREE.GridHelper(40,40,0x284d8a,0x182a47));
+    tubeGroup=new THREE.Group(); scene.add(tubeGroup);
+    new ResizeObserver(()=>{ const w=vizPane.clientWidth,h=vizPane.clientHeight; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }).observe(vizPane);
+    vizInitialized=true;
+    rebuildMeshes();
+  }
+
+  function clearGroup(g){
+    while(g.children.length){
+      const c=g.children[0];
+      if(c.geometry) c.geometry.dispose();
+      if(c.material) (Array.isArray(c.material)?c.material:[c.material]).forEach(m=>m.dispose());
+      g.remove(c);
+    }
+  }
+
+  function rebuildMeshes(){
+    if(!vizInitialized) return;
+    clearGroup(tubeGroup);
+    const gap=1.6;
+    tubes.forEach((t,i)=>{
+      const D=Math.max(t.diameter_mm/1000,0.0001);
+      const L=Math.max(t.length_m,0.001);
+      const rVis=Math.max((D/2)*DIAMETER_SCALE, MIN_VISUAL_RADIUS);
+      const geom=new THREE.CylinderGeometry(rVis, rVis, L, 24, 1, true);
+      const mat=new THREE.MeshStandardMaterial({color:0x2e8cff,metalness:0.1,roughness:0.3,transparent:true,opacity:0.9});
+      const mesh=new THREE.Mesh(geom,mat);
+      mesh.position.set((i-(N-1)/2)*gap, L/2, 0);
+      tubeGroup.add(mesh);
+
+      const capG=new THREE.CylinderGeometry(rVis, rVis, 0.02, 24);
+      const capM=new THREE.MeshStandardMaterial({color:0x0e172b,roughness:0.8});
+      const c1=new THREE.Mesh(capG,capM); c1.position.set(mesh.position.x,0.01,0); tubeGroup.add(c1);
+      const c2=new THREE.Mesh(capG,capM); c2.position.set(mesh.position.x,L+0.01,0); tubeGroup.add(c2);
+    });
+  }
+
+  
+  function animate(){ if(!vizOn) return; controls.update(); renderer.render(scene,camera); rafId=requestAnimationFrame(animate); }
+  function stopAnimate(){ if(rafId){ cancelAnimationFrame(rafId); rafId=null; } }
+
+  function setViz(on){
+    vizOn=on;
+    if(on){
+      btnToggleViz.classList.add('on'); btnToggleViz.textContent='시각화: ON'; btnToggleViz.setAttribute('aria-pressed','true');
+      resultsPane.style.display='none';
+      vizPane.style.display='block';
+      initThree(); rebuildMeshes(); stopAnimate(); animate();
+    }else{
+      btnToggleViz.classList.remove('on'); btnToggleViz.textContent='시각화: OFF'; btnToggleViz.setAttribute('aria-pressed','false');
+      stopAnimate();
+      vizPane.style.display='none';
+      resultsPane.style.display='block';
+    }
+  }
+  btnToggleViz.addEventListener('click',()=> setViz(!vizOn));
+
+  /* ===== 초기 로드 ===== */
+  function init(){
+    buildTubeControls(); updateAll();  // → 하단 결과 테이블 즉시 보임
+    setViz(false);                     // 기본 OFF
+    window.addEventListener('load', loadStateIfBusinessDay);
+    // 저장/초기화 버튼 바인딩
+    document.getElementById('btnSave').addEventListener('click', saveState);
+    document.getElementById('btnClear').addEventListener('click', clearSaved);
+    document.getElementById('btnStartToday').addEventListener('click', startFreshToday);
+  }
+  init();
+  </script>
+</body>
+</html>
