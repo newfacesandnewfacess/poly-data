@@ -39,14 +39,19 @@
 
     .resizer{position:absolute;top:0;right:-6px;width:12px;height:100%;cursor:ew-resize}
 
-    .intro{position:fixed;inset:0;background:rgba(0,0,0,.5);display:grid;place-items:center;z-index:20}
-    .modal{width:min(700px,92vw);background:#fff;border:4px solid var(--ink);border-radius:6px;overflow:hidden}
-    .modal header, .modal footer{padding:12px;border-bottom:4px solid var(--ink);display:flex;justify-content:space-between;align-items:center}
-    .modal footer{border-top:4px solid var(--ink);border-bottom:0}
-    .modal .body{padding:12px}
-    .langs{display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:8px}
-    .langitem{display:flex;align-items:center;gap:10px;border:3px solid var(--ink);border-radius:6px;padding:10px;background:#fff}
-    .muted{color:#444}
+      .intro{position:fixed;inset:0;background:rgba(0,0,0,.5);display:grid;place-items:center;z-index:20}
+      .modal{width:min(700px,92vw);background:#fff;  display:flex; flex-direction:column;border:4px solid var(--ink);border-radius:6px;overflow:hidden}
+      .modal header, .modal footer{padding:12px;border-bottom:4px solid var(--ink);display:flex;justify-content:space-between;align-items:center; flex:0 0 auto; }
+      .modal footer{border-top:4px solid var(--ink);border-bottom:0}
+      .modal .body{    padding:12px;
+    flex:1 1 auto;                 /* 남는 높이 차지 */
+    overflow:auto;                 /* 스크롤 생성 */
+    -webkit-overflow-scrolling:touch; /* iOS 관성 스크롤 */
+    max-height:65vh;               /* (안전) 상한 */
+      }
+      .langs{display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:8px}
+        .langitem{display:flex;align-items:center;gap:10px;border:3px solid var(--ink);border-radius:6px;padding:10px;background:#fff}
+        .muted{color:#444}
 
     .toast{position:fixed;right:14px;bottom:14px;z-index:50;background:#111;color:#fff;border-radius:10px;padding:10px 14px;max-width:70vw;box-shadow:0 6px 20px rgba(0,0,0,.2);font-weight:700}
 
@@ -114,21 +119,34 @@
   </div>
 
   <script>
+
     /**************** 설정 ****************/
     // (폴백 전용) Google v2 키 – 크롬 Translator 미지원 언어/브라우저용
     const GOOGLE_TRANSLATE_API_KEY = 'PUT-YOUR-API-KEY-HERE';
 
     const LANG_CATALOG = [
-      { code:'en', native:'English', flag:'https://flagcdn.com/w20/gb.png' },
-      { code:'vi', native:'Tiếng Việt', flag:'https://flagcdn.com/w20/vn.png' },
-      { code:'uz', native:'Oʻzbekcha', flag:'https://flagcdn.com/w20/uz.png' },
-      { code:'uz-Cyrl', native:'Ўзбекча', flag:'https://flagcdn.com/w20/uz.png' },
-      { code:'ru', native:'Русский', flag:'https://flagcdn.com/w20/ru.png' },
-      { code:'id', native:'Bahasa Indonesia', flag:'https://flagcdn.com/w20/id.png' },
-      { code:'th', native:'ไทย', flag:'https://flagcdn.com/w20/th.png' },
-      { code:'ja', native:'日本語', flag:'https://flagcdn.com/w20/jp.png' },
-      { code:'km', native:'ភាសាខ្មែរ', flag:'https://flagcdn.com/w20/kh.png' },
-      { code:'zh-CN', native:'简体中文', flag:'https://flagcdn.com/w20/cn.png' }
+      { code:'en', native:'영어', flag:'https://flagcdn.com/w20/gb.png' },
+      { code:'vi', native:'베트남', flag:'https://flagcdn.com/w20/vn.png' },
+      { code:'ru', native:'러시아어', flag:'https://flagcdn.com/w20/ru.png' },
+      { code:'id', native:'인도네시아어', flag:'https://flagcdn.com/w20/id.png' },
+      { code:'th', native:'태국', flag:'https://flagcdn.com/w20/th.png' },
+      { code:'ja', native:'일본어', flag:'https://flagcdn.com/w20/jp.png' },
+      { code:'zh-CN', native:'중국어', flag:'https://flagcdn.com/w20/cn.png' },
+         // === 새로 추가된 언어 ===
+        { code:'bn', native:'방글라데시(벵골어)', flag:'https://flagcdn.com/w20/bd.png' }
+      //  { code:'km', native:'캄보디아어x', flag:'https://flagcdn.com/w20/kh.png' },
+    //    { code:'uz', native:'우즈베키스탄(x)', flag:'https://flagcdn.com/w20/uz.png' },
+    //    { code:'uz-Cyrl', native:'우즈베키스탄(x)', flag:'https://flagcdn.com/w20/uz.png' },
+    //    { code:'ky', native:'키르기즈어x', flag:'https://flagcdn.com/w20/kg.png' },
+    //    { code:'lo', native:'라오어x', flag:'https://flagcdn.com/w20/la.png' },
+    //    { code:'my', native:'미얀마어x', flag:'https://flagcdn.com/w20/mm.png' },
+    //    { code:'mn', native:'몽골어x', flag:'https://flagcdn.com/w20/mn.png' },
+    //    { code:'ne', native:'네팔어x', flag:'https://flagcdn.com/w20/np.png' },
+    //    { code:'ur', native:'파키스탄(우르두어x)', flag:'https://flagcdn.com/w20/pk.png' },
+    //    { code:'tl', native:'필리핀(타갈로그어x)', flag:'https://flagcdn.com/w20/ph.png' },
+    //    { code:'si', native:'스리랑카(싱할라어x)', flag:'https://flagcdn.com/w20/lk.png' },
+    //    { code:'tet', native:'동티모르(테툼어x)', flag:'https://flagcdn.com/w20/tl.png' },
+    //    { code:'tg', native:'타지키스탄(타지크어x)', flag:'https://flagcdn.com/w20/tj.png' }
     ];
 
     let TARGETS = [];
