@@ -224,9 +224,9 @@ function makeQuestion(){
     b = randInt(0, CONFIG.MAX_VALUE - a);
     c = a + b;
   }else{ // subtraction: ensure non-negative and within range
-    c = randInt(0, CONFIG.MAX_VALUE);
-    b = randInt(0, c);
-    a = c - b;
+	a = randInt(0, CONFIG.MAX_VALUE);
+	b = randInt(0, a);   // b는 항상 a 이하
+	c = a - b;           // 정답 일관성 보장	
   }
   const unknownPos = randInt(0,2);
   let answer;
@@ -237,7 +237,9 @@ function makeQuestion(){
   const choices = new Set([answer]);
   while(choices.size<4){
     const span = Math.max(3, Math.round(CONFIG.MAX_VALUE*0.02));
-    let v = clamp(answer + randInt(-span,span) || answer+1, 0, CONFIG.MAX_VALUE);
+    let v = answer + randInt(-span, span);
+		if (v === answer) v += (Math.random() < 0.5 ? -1 : 1);
+		v = clamp(v, 0, CONFIG.MAX_VALUE);
     if(!choices.has(v)) choices.add(v);
   }
   const cArr = shuffle([...choices]);
