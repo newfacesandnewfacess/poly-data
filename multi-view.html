@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>멀티 유튜브 플레이어</title>
+<style>
+  body{margin:0;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#111;color:#fff}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;padding:12px}
+  .video-card{background:#222;border-radius:10px;padding:8px;display:flex;flex-direction:column;align-items:center;border:3px solid transparent;cursor:pointer;position:relative}
+  .video-card.selected{border-color:#fff}
+  .controls{width:100%;display:flex;align-items:center;gap:8px;margin-top:6px}
+  .controls input[type=range]{width:45%} /* 50% 축소(90% → 45%) */
+  .btn{background:#333;border:1px solid #555;color:#fff;padding:6px 10px;border-radius:8px;cursor:pointer}
+  .btn:hover{background:#3a3a3a}
+  /* 볼륨 팝오버 */
+  .vol-pop{position:absolute;bottom:72px; /* 버튼 위 */
+           right:12px;background:#1e1e1e;border:1px solid #555;
+           padding:8px 10px;border-radius:10px;display:none}
+  .vol-pop.show{display:block}
+  .vol-pop input[type=range]{width:140px}
+  table{width:100%;border-collapse:collapse;margin-top:12px}
+  th,td{border:1px solid #555;padding:6px;text-align:center}
+  #introModal{position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;justify-content:center;align-items:center}
+  #introBox{background:#fff;color:#000;padding:20px;border-radius:12px;width:560px;max-width:92%}
+  #urlInputs input{margin:4px 0}
+  
+</style>
+</head>
+<body>
+<!-- 인트로 모달 -->
+<div id="introModal">
+  <div id="introBox">
+    <h2>유튜브 주소 입력</h2>
+    <div id="urlInputs">
+      <input type="text" placeholder="유튜브 주소 입력" class="yt-url" style="width:80%">
+    </div>
+    <button class="btn" onclick="addInput()">+ 추가</button>
+    <button class="btn" onclick="startApp()">시작</button>
+    <table id="urlTable">
+      <thead><tr><th>순번</th><th>썸네일</th><th>주소</th><th>삭제</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 메인 -->
+<div class="grid" id="videoGrid"></div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+let players = [];
+let videoCount = 0;
+
+/* 입력창 추가 */
+function addInput(){
+  const div = document.getElementById('urlInputs');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = '유튜브 주소 입력';
+  input.className = 'yt-url';
+  input.style.width = '80%';
+  div.appendChild(input);
+}
+
+/* 시작 */
+function startApp(){
+  const urls = [...document.querySelectorAll('.yt-url')]
+                .map(i=>i.value.trim()).filter(Boolean);
+  const tbody = document.querySelector('#urlTable tbody');
+  tbody.innerHTML = '';
+  urls.forEach((url, i)=>{
+    const id = extractVideoID(url);
+    if(!id) return;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td><img src="https://img.youtube.com/vi/${id}/hqdefault.jpg" width="80"></td>
+      <td>${url}</td>
+      <td><button class="btn" onclick="this.closest('tr').remove()">삭제</button></td>`;
+    tbody.appendChild(tr);
+    createPlayer(id);
+  });
+  document.getElementById('introModal').style.display = 'none';
+}
+
+/* YouTube ID 추출 */
+function extractVideoID(url){
+  const m = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+/* 플레이어 생성 */
+function createPlayer(videoId){
+  const idx = videoCount;
+  const card = document.createElement('div');
+  card.className = 'video-card';
+  card.dataset.idx = idx;     
+  card.onclick = () => selectCard(card);   // 카드 클릭시 선택 + 전체 뮤트
+
+  card.innerHTML = `
+  <div class="video-card" data-idx="${idx}" onclick="selectCard(this)">
+    <div id="player${idx}"></div>
+    <div class="controls" onclick="event.stopPropagation()">
+      <input id="seek${idx}" type="range" min="0" max="100" value="0" step="1"
+             oninput="seekVideo(${idx}, this.value)">
+      <button id="playBtn${idx}" class="btn" onclick="togglePlay(${idx})">▶ PLAY</button>
+      <div style="position:relative">
+        <button id="muteBtn${idx}" class="btn" onclick="toggleMute(${idx})">🔇</button>
+        <div id="volPop${idx}" class="vol-pop">
+          <input id="volRange${idx}" type="range" min="0" max="100" value="50"
+                 oninput="setVolume(${idx}, this.value)">
+        </div>
+      </div>
+    </div>
+	</div>
+  `;
+  document.getElementById('videoGrid').appendChild(card);
+
+  players[idx] = new YT.Player(`player${idx}`, {
+    height: '180', width: '320',
+    videoId: videoId,
+    playerVars: {playsinline:1},
+    events: {'onReady': onPlayerReady}
+  });
+  videoCount++;
+}
+
+/* 선택 처리: 선택 변경 시 모든 영상 뮤트 */
+function selectCard(card){
+  document.querySelectorAll('.video-card').forEach(c=>c.classList.remove('selected'));
+  card.classList.add('selected');
+ // 1) 전체 뮤트
+ const selectedIdx = Number(card.dataset.idx);
+  players.forEach((p,i)=>{ if(p?.mute){ p.mute();
+ setInteractable(i, i === selectedIdx);  // ← 여기!
+  updateAudioUI(i); } });
+  const sel = players[selectedIdx];
+  if (sel?.unMute) { sel.unMute(); updateAudioUI(selectedIdx, true); }
+}
+
+
+// 1) iframe 상호작용 토글
+function setInteractable(idx, enabled){
+  const iframe = players[idx]?.getIframe?.();
+  if (iframe) iframe.style.pointerEvents = enabled ? 'auto' : 'none';
+}
+
+/* onReady: 진행바/아이콘 상태 주기 갱신 */
+function onPlayerReady(e){
+  const p = e.target;
+  const idx = players.indexOf(p);
+  // 초기상태: 음소거
+  p.mute();
+   setInteractable(idx, false);   // ← 선택 전엔 조작 비활성
+  updateAudioUI(idx);
+  setInterval(()=>{
+    const dur = (typeof p.getDuration==='function') ? p.getDuration() : 0;
+    const cur = (typeof p.getCurrentTime==='function') ? p.getCurrentTime() : 0;
+    const seek = document.getElementById(`seek${idx}`);
+    if(seek && dur){ seek.max = dur; seek.value = cur; }
+    updatePlayUI(idx);
+    updateAudioUI(idx); // 내장 UI 조작 반영
+  }, 500);
+}
+// 4) 보조: 버튼으로 조작할 때 자동으로 선택되게(선택 편의성↑)
+function ensureSelected(idx){
+  const card = document.querySelector(`.video-card[data-idx="${idx}"]`);
+  if (card && !card.classList.contains('selected')) selectCard(card);
+}
+/* ----- 컨트롤 로직 ----- */
+function togglePlay(idx){
+	ensureSelected(idx);
+  const p = players[idx]; if(!p) return;
+  const state = p.getPlayerState?.();
+  // 1(playing) → pause, 그 외 → play
+  if(state === 1) p.pauseVideo(); else p.playVideo();
+  updatePlayUI(idx);
+}
+function updatePlayUI(idx){
+  const p = players[idx]; const btn = document.getElementById(`playBtn${idx}`);
+  if(!p||!btn||!p.getPlayerState) return;
+  const playing = p.getPlayerState() === 1;
+  btn.textContent = playing ? '⏸ 일시정지' : '▶ PLAY';
+}
+
+function toggleMute(idx){
+ensureSelected(idx);
+  const p = players[idx]; if(!p) return;
+  if(p.isMuted()) p.unMute(); else p.mute();
+  updateAudioUI(idx, true); // 상태 전환 시 팝오버 표시/숨김
+}
+function setVolume(idx, val){
+ensureSelected(idx);
+  const p = players[idx]; if(!p) return;
+  p.setVolume(Number(val));
+  if(p.getVolume()===0 && !p.isMuted()) p.mute();
+  if(p.getVolume()>0 && p.isMuted()) p.unMute();
+  updateAudioUI(idx);
+}
+function updateAudioUI(idx, fromToggle=false){
+  const p = players[idx];
+  const btn = document.getElementById(`muteBtn${idx}`);
+  const pop = document.getElementById(`volPop${idx}`);
+  const vr  = document.getElementById(`volRange${idx}`);
+  if(!p||!btn||!pop||!vr||!p.getVolume) return;
+
+  const audible = !p.isMuted() && p.getVolume()>0;
+  btn.textContent = audible ? '🔊' : '🔇';
+  btn.title = audible ? '음소거' : '음소거 해제';
+
+  // 스피커 상태일 때 팝오버 표시, 아니라면 숨김
+  if(audible){
+    if(fromToggle) pop.classList.add('show');   // 토글로 스피커 전환 시 표시
+    vr.value = p.getVolume();
+  }else{
+    pop.classList.remove('show');
+  }
+}
+
+/* 탐색 */
+function seekVideo(idx, v){
+ensureSelected(idx);
+  const p = players[idx]; if(!p) return;
+  p.seekTo(Number(v), true);
+}
+
+/* 전역 클릭 시 팝오버 닫기 (스피커 상태 유지) */
+document.addEventListener('click', (e)=>{
+  document.querySelectorAll('.vol-pop').forEach(el=>{
+    if(!el.contains(e.target) && !el.previousElementSibling.contains(e.target)){
+      el.classList.remove('show');
+    }
+  });
+});
+</script>
+</body>
+</html>
