@@ -2,160 +2,135 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>PyScript · 로컬/레포 실행 통합</title>
+<title>PDF → 이미지 추출 (권장)</title>
 
 <link rel="stylesheet" href="https://pyscript.net/releases/2025.8.1/pyscript.css"/>
 <script type="module" src="https://pyscript.net/releases/2025.8.1/core.js"></script>
 
-<py-config>{ "packages": [] }</py-config>
+<py-config>{ "packages": ["pypdf"] }</py-config>
+
 <style>
   body{margin:0;background:#0b1220;color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
   .wrap{max-width:1100px;margin:40px auto;padding:0 16px}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   .card{background:#121a2a;border:1px solid #223;padding:18px;border-radius:14px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   button{padding:10px 14px;border-radius:10px;border:1px solid #334;background:#1a2236;color:#e9eef6;cursor:pointer}
   input[type=file]{display:none}
+  input[type=text]{background:#0f1525;border:1px solid #334;border-radius:10px;color:#e9eef6;padding:8px 10px}
+  #gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-top:12px}
+  #gallery figure{margin:0}
+  #gallery img{max-width:100%;border-radius:12px;border:1px solid #334;background:#0f1525}
+  #stats{opacity:.85}
   pre{white-space:pre-wrap;background:#0f1525;border:1px solid #334;border-radius:10px;padding:10px;margin-top:10px}
-  #drop{border:2px dashed #334;border-radius:12px;min-height:120px;display:grid;place-items:center;background:#0f1525;margin-top:10px}
-  @media (max-width:880px){ .grid{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="grid">
-    <!-- A) 로컬 -->
-    <section class="card">
-      <h2>A) 로컬 .py 실행</h2>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
-        <button py-click="open_picker">파일 열기</button>
-        <button py-click="clear_out('outA','logA')">지우기</button>
-      </div>
-      <input id="picker" type="file" accept=".py,.txt"/>
-      <div id="drop">여기로 .py 드롭</div>
-      <h3>출력</h3><pre id="outA"></pre>
-      <h3>로그</h3><pre id="logA"></pre>
-    </section>
-
-    <!-- B) 레포 -->
-    <section class="card">
-      <h2>B) 레포 파일 실행 (py/scripts/demo.py)</h2>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
-        <button py-click="run_repo">실행</button>
-        <button py-click="clear_out('outB','logB')">지우기</button>
-      </div>
-      <h3>출력</h3><pre id="outB"></pre>
-      <h3>로그</h3><pre id="logB"></pre>
-    </section>
+  <div class="card">
+    <h1>PDF → 이미지 추출 (pypdf)</h1>
+    <div class="row">
+      <button py-click="pick_pdf">PDF 선택</button>
+      <label>페이지 범위(예: 1-3, 5): <input id="range" type="text" placeholder="비우면 전체"/></label>
+      <button py-click="clear_all">지우기</button>
+      <a id="ziplink" style="display:none" download="images.zip">ZIP 다운로드</a>
+    </div>
+    <div id="stats"></div>
+    <input id="pdfinput" type="file" accept="application/pdf"/>
+    <div id="gallery"></div>
+    <h3>로그</h3><pre id="log"></pre>
   </div>
 </div>
 
 <script type="py">
 from pyscript import display, when
-from pyodide.ffi import create_proxy
-from pyodide.http import pyfetch
 from js import document, TextDecoder, Uint8Array
-import sys, io, traceback, re
+import io, base64, zipfile, traceback
 
-def w(t,m): display(str(m), target=t, append=True)
-def lg(t,m): display(str(m), target=t, append=True)
+def lg(m): display(str(m), target="log", append=True)
+def set_html(id_, html): document.getElementById(id_).innerHTML = html
+def append_html(id_, html): document.getElementById(id_).insertAdjacentHTML("beforeend", html)
 
-UNSAFE = {"\u00A0":"NBSP","\u202F":"NARROW_NBSP","\u2007":"FIGURE_SPACE",
-          "\u200B":"ZWSP","\u200C":"ZWNJ","\u200D":"ZWJ","\u2060":"WORD_JOINER","\uFEFF":"BOM"}
-_pat = re.compile("[" + "".join(UNSAFE.keys()) + "]")
+def pick_pdf(e=None): document.getElementById("pdfinput").click()
+def clear_all(e=None):
+    set_html("gallery",""); set_html("stats","")
+    document.getElementById("ziplink").style.display="none"
+    document.getElementById("log").innerText=""
 
-def sanitize(s):
-    cnt={}
-    def repl(m):
-        ch=m.group(0); cnt[ch]=cnt.get(ch,0)+1
-        return " " if ch in ("\u00A0","\u202F","\u2007") else ""
-    return _pat.sub(repl, s), cnt
+def parse_range(s, total):
+    # "1-3,5" → {1,2,3,5}; 1-based
+    s = (s or "").strip()
+    if not s: return set(range(1, total+1))
+    out = set()
+    for part in s.split(","):
+        part = part.strip()
+        if "-" in part:
+            a,b = part.split("-",1)
+            if a.isdigit() and b.isdigit():
+                i,j = int(a), int(b)
+                if i<=j: out.update(range(max(1,i), min(total,j)+1))
+        elif part.isdigit():
+            k = int(part)
+            if 1<=k<=total: out.add(k)
+    return out
 
-async def read_file_text(f):
+async def file_to_bytes(f):
+    ab = await f.arrayBuffer()
+    return bytes(Uint8Array.new(ab))
+
+@when("change","#pdfinput")
+async def on_pdf(e):
     try:
-        return await f.text()
-    except Exception as e_text:
-        lg("logA", f"text() 실패 → arrayBuffer(): {e_text}\n")
-        ab = await f.arrayBuffer()
-        return TextDecoder.new("utf-8").decode(Uint8Array.new(ab))
+        files = e.target.files
+        if not files or files.length==0:
+            lg("파일 선택 취소\n"); return
+        f = files[0]
+        lg(f"선택됨: {f.name} ({f.size} bytes)\n")
 
-def run_code(code, t_out):
-    buf=io.StringIO(); old=sys.stdout; sys.stdout=buf
-    ret=None
-    try:
-        ns={}; exec(code, ns, ns)
-        if "main" in ns and callable(ns["main"]): ret=ns["main"]()
-    finally:
-        sys.stdout=old
-    out=buf.getvalue()
-    if out: w(t_out, f"[print]\n{out}")
-    if ret is not None: w(t_out, f"[main()]\n{ret}\n")
-    if not out and ret is None: w(t_out, "[안내] 출력/반환 없음\n")
+        from pypdf import PdfReader
+        pdf_bytes = await file_to_bytes(f)
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        total_pages = len(reader.pages)
+        wanted = parse_range(document.getElementById("range").value, total_pages)
+        if not wanted: lg("선택된 페이지가 없습니다.\n"); return
 
-def clear_out(t_out="outA", t_log="logA", e=None):
-    document.getElementById(t_out).innerText=""
-    document.getElementById(t_log).innerText=""
+        images = []
+        skipped = 0
+        for pno, page in enumerate(reader.pages, start=1):
+            if pno not in wanted: continue
+            imgs = getattr(page, "images", None)
+            if imgs is None:
+                raise RuntimeError("현재 pypdf에서 page.images를 찾지 못했습니다. pypdf 최신 버전 사용을 권장합니다.")
+            if not imgs:
+                skipped += 1; continue
+            for idx, im in enumerate(imgs, start=1):
+                ext = (im.extension or "bin").lower()
+                mime = {"jpg":"jpeg","jpeg":"jpeg","jp2":"jp2","png":"png","tiff":"tiff"}.get(ext, "octet-stream")
+                fname = f"p{pno:03d}_{idx:02d}.{ext}"
+                images.append((fname, f"image/{mime}", im.data, len(im.data)))
 
-# A) 로컬
-def open_picker(e=None): lg("logA","open_picker\n"); document.getElementById("picker").click()
-@when("change","#picker")
-async def on_change(e): lg("logA","change 수신\n"); await run_files(e.target.files)
+        if not images:
+            set_html("stats", f"<div id='stats'>선택한 구간에 추출 가능한 이미지가 없습니다. (빈 페이지: {skipped})</div>")
+            lg("이미지 없음\n"); return
 
-async def run_files(files):
-    if not files or files.length==0: lg("logA","파일 없음/취소\n"); return
-    f = files[0]; lg("logA", f"선택됨: {f.name} ({f.size} bytes)\n")
-    try:
-        code = await read_file_text(f)
-        code, cnt = sanitize(code)
-        if cnt: lg("logA","[정규화] " + ", ".join(f"{UNSAFE[k]}×{v}" for k,v in cnt.items()) + "\n")
-        run_code(code, "outA")
-    except Exception as e:
-        w("outA", "[에러]\n" + "".join(traceback.format_exception_only(type(e),e)))
+        set_html("gallery","")
+        for fname, mime, data, n in images:
+            b64 = base64.b64encode(data).decode("ascii")
+            append_html("gallery", f'<figure><img alt="{fname}" src="data:{mime};base64,{b64}"><figcaption style="opacity:.85">{fname} · {n} bytes</figcaption></figure>')
 
-# 드롭
-drop = document.getElementById("drop")
-def prevent(ev): ev.preventDefault()
-for ev in ["dragenter","dragover","dragleave","drop"]:
-    drop.addEventListener(ev, create_proxy(prevent))
-@when("drop","#drop")
-async def on_drop(e):
-    lg("logA","drop 수신\n")
-    dt = e.dataTransfer
-    files = dt.files if dt else None
-    await run_files(files)
-try:
-    document.getElementById("picker").addEventListener("change", create_proxy(on_change))
-    lg("logA","수동 바인딩 완료\n")
-except Exception:
-    pass
+        # ZIP
+        bio = io.BytesIO()
+        with zipfile.ZipFile(bio, "w", zipfile.ZIP_DEFLATED) as z:
+            for fname, _, data, _ in images:
+                z.writestr(fname, data)
+        zip_b64 = base64.b64encode(bio.getvalue()).decode("ascii")
+        a = document.getElementById("ziplink")
+        a.href = "data:application/zip;base64," + zip_b64
+        a.style.display = "inline-block"
 
-# B) 레포 (상대경로 → RAW Fallback)
-USER="newfacesandnewfacess"; REPO="poly-data"; PATH="py/scripts/demo2.py"
-def raw(ref): return f"https://raw.githubusercontent.com/{USER}/{REPO}/{ref}/{PATH}"
-
-async def run_repo(e=None):
-    t_out, t_log = "outB", "logB"
-    try:
-        try:
-            r = await pyfetch("./scripts/demo.py")
-            if r.status != 200: raise RuntimeError(f"HTTP {r.status}")
-            code = await r.text()
-        except Exception as e1:
-            lg(t_log, f"[안내] 로컬 실패 → RAW 재시도: {e1}\n")
-            code=None
-            for ref in ["HEAD","main","master"]:
-                rr = await pyfetch(raw(ref))
-                if rr.status == 200:
-                    code = await rr.text(); lg(t_log, f"[안내] RAW({ref}) 성공\n"); break
-                else:
-                    lg(t_log, f"  - RAW({ref}) HTTP {rr.status}\n")
-            if code is None:
-                w(t_out, "[에러] RAW(HEAD/main/master) 모두 실패\n"); return
-        code, cnt = sanitize(code)
-        if cnt: lg(t_log,"[정규화] " + ", ".join(f"{UNSAFE[k]}×{v}" for k,v in cnt.items()) + "\n")
-        run_code(code, t_out)
-    except Exception as e:
-        w(t_out, "[에러]\n" + "".join(traceback.format_exception_only(type(e),e)))
+        set_html("stats", f"<div id='stats'>총 {len(images)}개 이미지 추출 · 건너뜀 {skipped} 페이지</div>")
+        lg("완료\n")
+    except Exception as ex:
+        lg("[에러]\n" + "".join(traceback.format_exception_only(type(ex),ex)))
 </script>
 </body>
 </html>
-
