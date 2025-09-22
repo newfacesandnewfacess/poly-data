@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>PDF → 이미지 추출 (최소 패치)</title>
+<title>PDF → 이미지 추출 (범위/정보 표시)</title>
 
 <link rel="stylesheet" href="https://pyscript.net/releases/2025.8.1/pyscript.css"/>
 <script type="module" src="https://pyscript.net/releases/2025.8.1/core.js"></script>
@@ -10,90 +10,176 @@
 
 <style>
   body{margin:0;background:#0b1220;color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-  .wrap{max-width:980px;margin:40px auto;padding:0 16px}
+  .wrap{max-width:1120px;margin:40px auto;padding:0 16px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   .card{background:#121a2a;border:1px solid #223;padding:18px;border-radius:14px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   button{padding:10px 14px;border-radius:10px;border:1px solid #334;background:#1a2236;color:#e9eef6;cursor:pointer}
   input[type=file]{display:none}
-  #gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:10px}
-  #gallery img{max-width:100%;border-radius:10px;border:1px solid #334;background:#0f1525}
+  input[type=text]{background:#0f1525;border:1px solid #334;border-radius:10px;color:#e9eef6;padding:8px 10px}
+  .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:10px}
+  .gal img{max-width:100%;border-radius:10px;border:1px solid #334;background:#0f1525}
   pre{white-space:pre-wrap;background:#0f1525;border:1px solid #334;border-radius:10px;padding:10px;margin-top:10px}
+  @media (max-width:900px){ .grid{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="card">
-    <h1>PDF → 이미지 추출 (pypdf)</h1>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button py-click="pick_pdf">PDF 선택</button>
-      <button py-click="clear_all">지우기</button>
-      <a id="ziplink" style="display:none" download="images.zip">ZIP 다운로드</a>
-    </div>
-    <input id="pdfinput" type="file" accept="application/pdf"/>
-    <div id="gallery"></div>
-    <h3>로그</h3><pre id="log"></pre>
+  <div class="grid">
+    <section class="card">
+      <h2>A) 로컬 PDF → 이미지</h2>
+      <div class="row">
+        <button py-click="pick_pdf">PDF 선택</button>
+        <label>페이지(예: 1-3,5): <input id="rngA" type="text" placeholder="비우면 전체"/></label>
+        <button py-click="clear_a">지우기</button>
+        <a id="zipA" style="display:none" download="images_local.zip">ZIP 다운로드</a>
+      </div>
+      <input id="pdfA" type="file" accept="application/pdf"/>
+      <div id="galA" class="gal"></div>
+      <h3>로그</h3><pre id="logA"></pre>
+    </section>
+
+    <section class="card">
+      <h2>B) 레포 PDF → 이미지</h2>
+      <div class="row">
+        <input id="path" type="text" placeholder="예: py/assets/sample.pdf" style="flex:1"/>
+        <label>페이지: <input id="rngB" type="text" placeholder="비우면 전체"/></label>
+        <button py-click="run_repo">가져와 추출</button>
+        <button py-click="clear_b">지우기</button>
+        <a id="zipB" style="display:none" download="images_repo.zip">ZIP 다운로드</a>
+      </div>
+      <div id="galB" class="gal"></div>
+      <h3>로그</h3><pre id="logB"></pre>
+    </section>
   </div>
 </div>
 
 <script type="py">
 from pyscript import display, when
-from js import document, Uint8Array
+from js import document, fetch, Uint8Array
 import io, base64, zipfile, traceback
 
-def lg(m): display(str(m), target="log", append=True)
+USER="newfacesandnewfacess"; REPO="poly-data"
+
+def lg(t,m): display(str(m), target=t, append=True)
 def set_html(id_, html): document.getElementById(id_).innerHTML = html
 def append_html(id_, html): document.getElementById(id_).insertAdjacentHTML("beforeend", html)
 
-def pick_pdf(e=None): document.getElementById("pdfinput").click()
-def clear_all(e=None):
-    set_html("gallery",""); document.getElementById("ziplink").style.display="none"
-    document.getElementById("log").innerText=""
+def pick_pdf(e=None): document.getElementById("pdfA").click()
+def clear_a(e=None):
+    set_html("galA",""); document.getElementById("zipA").style.display="none"
+    document.getElementById("logA").innerText=""
+def clear_b(e=None):
+    set_html("galB",""); document.getElementById("zipB").style.display="none"
+    document.getElementById("logB").innerText=""
 
-async def file_to_bytes(f):
+async def ensure_bytes_from_file(f):
     ab = await f.arrayBuffer()
-    return bytes(Uint8Array.new(ab))  # ← 확실한 Python bytes
+    return bytes(Uint8Array.new(ab))
 
-@when("change","#pdfinput")
-async def on_pdf(e):
+async def ensure_bytes_from_url(url):
+    r = await fetch(url)
+    if not r.ok: raise RuntimeError(f"HTTP {r.status}")
+    ab = await r.arrayBuffer()
+    return bytes(Uint8Array.new(ab))
+
+def parse_range(s, total):
+    s=(s or "").strip()
+    if not s: return set(range(1,total+1))
+    out=set()
+    for part in s.split(","):
+        part=part.strip()
+        if "-" in part:
+            a,b=part.split("-",1)
+            if a.isdigit() and b.isdigit():
+                i,j=int(a),int(b)
+                if i<=j: out.update(range(max(1,i),min(total,j)+1))
+        elif part.isdigit():
+            k=int(part)
+            if 1<=k<=total: out.add(k)
+    return out
+
+def images_from_pdf(pdf_bytes: bytes, wanted=None):
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    total=len(reader.pages)
+    wanted = wanted or set(range(1,total+1))
+    images=[]
+    for pno, page in enumerate(reader.pages, start=1):
+        if pno not in wanted: continue
+        imgs = getattr(page,"images",None)
+        if not imgs: continue
+        for idx, im in enumerate(imgs, start=1):
+            ext=(im.extension or "bin").lower()
+            mime={"jpg":"jpeg","jpeg":"jpeg","jp2":"jp2","png":"png","tiff":"tiff"}.get(ext,"octet-stream")
+            fname=f"p{pno:03d}_{idx:02d}.{ext}"
+            images.append((fname,f"image/{mime}",im.data,len(im.data)))
+    return images, total
+
+def set_zip_link(link_id, images):
+    bio=io.BytesIO()
+    with zipfile.ZipFile(bio,"w",zipfile.ZIP_DEFLATED) as z:
+        for fname,_,data,_ in images:
+            z.writestr(fname,data)
+    b64=base64.b64encode(bio.getvalue()).decode("ascii")
+    a=document.getElementById(link_id)
+    a.href="data:application/zip;base64,"+b64
+    a.style.display="inline-block"
+
+@when("change","#pdfA")
+async def on_local(e):
     try:
-        files = e.target.files
-        if not files or files.length==0:
-            lg("파일 선택 취소\n"); return
-        f = files[0]; lg(f"선택됨: {f.name} ({f.size} bytes)\n")
+        files=e.target.files
+        if not files or files.length==0: lg("logA","취소\n"); return
+        f=files[0]; lg("logA",f"{f.name} 읽는 중...\n")
+        pdf_bytes=await ensure_bytes_from_file(f)
+        pages_total=None
+        wanted=None
+        # 범위 파싱
+        from pypdf import PdfReader
+        pages_total = len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+        wanted=parse_range(document.getElementById("rngA").value, pages_total)
+        images,_=images_from_pdf(pdf_bytes,wanted)
+        if not images: lg("logA","이미지 없음\n"); return
+        set_html("galA","")
+        for fname,mime,data,n in images:
+            b64=base64.b64encode(data).decode("ascii")
+            append_html("galA",f'<figure><img alt="{fname}" src="data:{mime};base64,{b64}"><figcaption style="opacity:.85">{fname} · {n} bytes</figcaption></figure>')
+        set_zip_link("zipA",images)
+        lg("logA",f"총 {len(images)}개 추출 (총 {pages_total}p 중 {len(wanted)}p 처리)\n")
+    except Exception as ex:
+        lg("logA","[에러]\n"+ "".join(traceback.format_exception_only(type(ex),ex)))
 
-        pdf_bytes = await file_to_bytes(f)
+def raw(ref, path): return f"https://raw.githubusercontent.com/{USER}/{REPO}/{ref}/{path}"
+
+@when("click","button[py-click='run_repo']")
+async def run_repo(_=None):
+    try:
+        path=(document.getElementById("path").value or "").strip()
+        if not path: lg("logB","경로 입력: py/assets/sample.pdf\n"); return
+        urls=["./"+path, raw("HEAD",path), raw("main",path), raw("master",path)]
+        pdf_bytes=None
+        for u in urls:
+            try:
+                pdf_bytes=await ensure_bytes_from_url(u)
+                lg("logB",f"[안내] 로드 성공: {u}\n"); break
+            except Exception as e1:
+                lg("logB",f"  - 실패: {u} ({e1})\n")
+        if pdf_bytes is None: lg("logB","[에러] 모든 경로 실패\n"); return
 
         from pypdf import PdfReader
-        reader = PdfReader(io.BytesIO(pdf_bytes))
-
-        images=[]
-        for pno, page in enumerate(reader.pages, start=1):
-            imgs = getattr(page, "images", None)
-            if imgs is None:
-                raise RuntimeError("사용 중 pypdf에서 page.images를 찾지 못했습니다. 최신 pypdf 권장.")
-            for idx, im in enumerate(imgs, start=1):
-                ext = (im.extension or "bin").lower()
-                mime = {"jpg":"jpeg","jpeg":"jpeg","jp2":"jp2","png":"png","tiff":"tiff"}.get(ext, "octet-stream")
-                fname = f"p{pno:03d}_{idx:02d}.{ext}"
-                images.append((fname, f"image/{mime}", im.data))
-
-        if not images:
-            lg("이미지 없음\n"); return
-
-        set_html("gallery","")
-        for fname, mime, data in images:
-            b64 = base64.b64encode(data).decode("ascii")
-            append_html("gallery", f'<figure><img alt="{fname}" src="data:{mime};base64,{b64}"><figcaption style="opacity:.85">{fname}</figcaption></figure>')
-
-        bio = io.BytesIO()
-        with zipfile.ZipFile(bio, "w", zipfile.ZIP_DEFLATED) as z:
-            for fname, _, data in images:
-                z.writestr(fname, data)
-        a = document.getElementById("ziplink")
-        a.href = "data:application/zip;base64," + base64.b64encode(bio.getvalue()).decode("ascii")
-        a.style.display = "inline-block"
-        lg(f"총 {len(images)}개 이미지 추출 완료\n")
+        total = len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+        wanted=parse_range(document.getElementById("rngB").value, total)
+        images,_=images_from_pdf(pdf_bytes,wanted)
+        if not images: lg("logB","이미지 없음\n"); return
+        set_html("galB","")
+        for fname,mime,d,n in images:
+            b64=base64.b64encode(d).decode("ascii")
+            append_html("galB",f'<figure><img alt="{fname}" src="data:{mime};base64,{b64}"><figcaption style="opacity:.85">{fname} · {n} bytes</figcaption></figure>')
+        set_zip_link("zipB",images)
+        lg("logB",f"총 {len(images)}개 추출 (총 {total}p 중 {len(wanted)}p 처리)\n")
     except Exception as ex:
-        lg("[에러]\n" + "".join(traceback.format_exception_only(type(ex),ex)))
+        lg("logB","[에러]\n"+ "".join(traceback.format_exception_only(type(ex),ex)))
 </script>
 </body>
 </html>
