@@ -62,9 +62,9 @@ from pyodide.http import pyfetch
 from js import document, window
 import sys, io, traceback
 
-USER="newfacesandnewfacess"; REPO="poly-data"; PATH="py/scripts/demo.py"
-RAW_HEAD=f"https://raw.githubusercontent.com/{USER}/{REPO}/HEAD/{PATH}"
-RAW_MAIN=f"https://raw.githubusercontent.com/{USER}/{REPO}/main/{PATH}"
+USER="newfacesandnewfacess"; REPO="poly-data"; PATH="py/scripts/demo2.py"
+RAW_HEAD=f"https://raw.githubusercontent.com/{USER}/{REPO}/{PATH}"
+RAW_MAIN=f"https://raw.githubusercontent.com/{USER}/{REPO}/{PATH}"
 
 def env_check():
     host = window.location.hostname or ""
@@ -143,3 +143,4 @@ env_check()
   </script>
 </body>
 </html>
+
