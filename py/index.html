@@ -3,80 +3,103 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PyScript · 안정화(권장)</title>
+  <title>PyScript · 에디터 + 파일 실행</title>
 
   <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
   <script type="module" src="https://pyscript.net/latest/core.js"></script>
 
   <style>
     body{margin:0;background:#0b1220;color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-    .wrap{max-width:960px;margin:48px auto;padding:0 16px}
-    .card{background:#121a2a;border:1px solid #223;padding:18px;border-radius:14px}
-    button{padding:10px 14px;border-radius:10px;border:1px solid #334;background:#1a2236;color:#e9eef6;cursor:pointer}
-    pre#out{white-space:pre-wrap;background:#0f1525;border:1px solid #334;border-radius:10px;padding:10px;min-height:92px;margin-top:10px}
-    .hint{opacity:.85}
+    .wrap{max-width:1000px;margin:32px auto;padding:0 16px}
+    .tabs{display:flex;gap:8px;margin-bottom:12px}
+    .btn{padding:10px 14px;border-radius:10px;border:1px solid #334;background:#1a2236;color:#e9eef6;cursor:pointer}
+    .card{background:#121a2a;border:1px solid #223;padding:18px;border-radius:14px;margin-top:10px}
+    textarea{width:100%;min-height:160px;background:#0f1525;color:#e9eef6;border:1px solid #334;border-radius:10px;padding:10px;font-family:ui-monospace,Menlo,Consolas,monospace}
+    pre{white-space:pre-wrap;background:#0f1525;border:1px solid #334;border-radius:10px;padding:10px;min-height:96px}
+    .hidden{display:none}
   </style>
 
   <py-config>
 {
-  "packages": []
+  "packages": ["micropip"]
 }
   </py-config>
 </head>
 <body>
   <div class="wrap">
-    <div class="card">
-      <h1>PyScript 실행 안정화</h1>
-      <p class="hint">PyScript 로더나 CORS 문제가 있어도 원인과 대체경로를 안내합니다.</p>
-      <button py-click="run_from_repo()">demo.py 실행</button>
-      <button py-click="clear_out()">출력 지우기</button>
-      <pre id="out"></pre>
+    <div class="tabs">
+      <button class="btn" id="tab_editor" onclick="show('editor')">① 코드 에디터 실행</button>
+      <button class="btn" id="tab_file"   onclick="show('file')">② 레포 파일 실행</button>
     </div>
+
+    <!-- ① 코드 에디터 -->
+    <section id="panel_editor" class="card">
+      <h2>코드 에디터</h2>
+      <p class="hint">필요하면 micropip으로 순수 파이썬 패키지 설치(예: <code>await pip_install('faker')</code>)</p>
+      <textarea id="code">print("Hello, PyScript!")</textarea>
+      <div style="margin-top:8px">
+        <button class="btn" py-click="run_code()">실행</button>
+        <button class="btn" py-click="clear_out('out1')">출력 지우기</button>
+      </div>
+      <pre id="out1"></pre>
+    </section>
+
+    <!-- ② 레포 파일 실행 -->
+    <section id="panel_file" class="card hidden">
+      <h2>레포 파일 실행</h2>
+      <p><code>scripts/demo.py</code>의 <code>main()</code>을 호출합니다.</p>
+      <button class="btn" py-click="run_from_repo()">demo.py 실행</button>
+      <button class="btn" py-click="clear_out('out2')">출력 지우기</button>
+      <pre id="out2"></pre>
+    </section>
   </div>
+
+  <script>
+    function show(which){
+      document.getElementById('panel_editor').classList.toggle('hidden', which!=='editor');
+      document.getElementById('panel_file').classList.toggle('hidden', which!=='file');
+    }
+  </script>
 
   <py-script>
 from pyscript import display
 from pyodide.http import pyfetch
 from js import document
+import asyncio
 
-RAW_URL = None
-# 필요 시 다음처럼 설정: 
-# RAW_URL = "https://raw.githubusercontent.com/{USER}/{REPO}/HEAD/scripts/demo.py"
+def out(target, msg): display(str(msg), target=target, append=True)
 
-def w(msg): display(str(msg), target="out", append=True)
+async def pip_install(pkg: str):
+    import micropip
+    await micropip.install(pkg)
+    return f"installed: {pkg}"
+
+def clear_out(target):
+    document.getElementById(target).innerText = ""
+
+def run_code():
+    src = document.getElementById("code").value
+    try:
+        ns = {}
+        exec(src, ns, ns)
+    except Exception as e:
+        out("out1", f"[에러] {e}\\n")
 
 async def run_from_repo():
     try:
-        w("[불러오는 중] scripts/demo.py ...\\n")
-        try:
-            resp = await pyfetch("scripts/demo.py")
-            if resp.status != 200:
-                raise RuntimeError(f"HTTP {resp.status}")
-            code = await resp.text()
-        except Exception as e1:
-            if RAW_URL:
-                w(f"[안내] 로컬 fetch 실패 → RAW로 재시도: {e1}\\n")
-                resp2 = await pyfetch(RAW_URL, method="GET")
-                if resp2.status != 200:
-                    raise RuntimeError(f"RAW fetch 실패: HTTP {resp2.status}")
-                code = await resp2.text()
-            else:
-                raise
-
+        out("out2", "[불러오는 중] scripts/demo.py ...\\n")
+        resp = await pyfetch("scripts/demo.py")
+        if resp.status != 200:
+            out("out2", f"[에러] HTTP {resp.status}\\n"); return
+        code = await resp.text()
         ns = {}
         exec(code, ns, ns)
         if "main" in ns and callable(ns["main"]):
-            w(ns["main"]()); w("\\n")
+            out("out2", ns["main"]()); out("out2", "\\n")
         else:
-            w("[안내] demo.py에 main()이 없습니다.\\n")
-
+            out("out2", "[안내] demo.py에 main()이 없습니다.\\n")
     except Exception as e:
-        w("[에러] PyScript 초기화/네트워크/경로 문제일 수 있습니다.\\n")
-        w(f"└ 상세: {e}\\n")
-        w("※ 점검: 1) github.io(Pages)로 열기  2) Network에서 core.js 200 OK 확인  3) scripts/demo.py 경로·대소문자\\n")
-
-def clear_out():
-    document.getElementById("out").innerText = ""
+        out("out2", f"[에러] {e}\\n")
   </py-script>
 </body>
 </html>
