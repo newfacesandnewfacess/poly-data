@@ -39,15 +39,15 @@ from pyodide.http import pyfetch
 from js import document
 
 # 👇 본인 깃허브에 맞게 교체(예: alexkim/myrepo)
-RAW_URL = "https://raw.githubusercontent.com/{USER}/{REPO}/HEAD/scripts/demo.py"
+RAW_URL = "https://raw.githubusercontent.com//newfacesandnewfacess/poly-data/scripts/demo.py"
 
 def w(msg): display(str(msg), target="out", append=True)
 
 async def run_from_repo():
     try:
-        w("[불러오는 중] scripts/demo.py ...\\n")
+        w("[불러오는 중] ./scripts/demo.py ...\\n")
         try:
-            resp = await pyfetch("scripts/demo.py")
+            resp = await pyfetch("./scripts/demo.py")
             if resp.status != 200:
                 raise RuntimeError(f"HTTP {resp.status}")
             code = await resp.text()
@@ -75,4 +75,5 @@ def clear_out():
   </py-script>
 </body>
 </html>
+
 
