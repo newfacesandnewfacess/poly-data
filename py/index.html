@@ -44,9 +44,9 @@ RAW_URL = None  # 필요 시 "https://raw.githubusercontent.com/{USER}/{REPO}/HE
 async def run_from_repo():
     out = Element("out")
     try:
-        out.write("[불러오는 중] scripts/demo.py ...\n")
+        out.write("[불러오는 중] ./scripts/demo.py ...\n")
         try:
-            resp = await pyfetch("scripts/demo.py")
+            resp = await pyfetch("./scripts/demo.py")
             if resp.status != 200:
                 raise RuntimeError(f"HTTP {resp.status}")
             code = await resp.text()
@@ -70,10 +70,11 @@ async def run_from_repo():
     except Exception as e:
         out.write("[에러] PyScript 초기화/네트워크 문제일 수 있습니다.\n")
         out.write(f"└ 상세: {e}\n")
-        out.write("※ 점검: 1) Pages URL로 열었는지 2) core.js 200 OK인지 3) scripts/demo.py 경로/대소문자\n")
+        out.write("※ 점검: 1) Pages URL로 열었는지 2) core.js 200 OK인지 3) ./scripts/demo.py 경로/대소문자\n")
 
 def clear_out():
     Element("out").clear()
   </py-script>
 </body>
+
 </html>
