@@ -1,2 +1,2 @@
 def main():
-    return "OK: PyScript 안정화 버전에서 실행됨"
+    return "에디터/파일 실행 통합 버전 동작 OK"
