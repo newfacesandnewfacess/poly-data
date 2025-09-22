@@ -93,8 +93,25 @@
   }
 
   /* ===== 인트로 모달 ===== */
-  #introModal{position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;justify-content:center;align-items:center;z-index:9999}
-  #introBox{background:#fff;color:#000;padding:20px;border-radius:12px;width:860px;max-width:94%}
+  #introModal{
+  position:fixed; inset:0;
+  background:rgba(0,0,0,.9);
+  display:flex; justify-content:center; align-items:center;
+  z-index:11000;                 /* 게이트보다 위 */
+  overflow:auto;                 /* ★ 내용이 크면 스크롤 */
+  padding: max(24px, env(safe-area-inset-top))
+           max(24px, env(safe-area-inset-right))
+           max(24px, env(safe-area-inset-bottom))
+           max(24px, env(safe-area-inset-left));
+}
+/* 모달 박스: 뷰포트에 맞춰 자동 줄이고 내부 스크롤 */
+#introBox{
+  background:#fff; color:#000; padding:20px; border-radius:12px;
+  width:min(860px, 94vw);
+  max-height: calc(100vh - 2*24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow:auto;                 /* ★ 표/리스트가 길어져도 스크롤 */
+  box-sizing:border-box;
+}
   #urlRow{display:flex;gap:8px;align-items:center;margin:8px 0}
   #urlInput{flex:1;padding:8px}
   table{width:100%;border-collapse:collapse;margin-top:12px}
@@ -129,6 +146,7 @@
 
   /* ===== 세로모드 차단 게이트 ===== */
   #landscapeGate{
+      z-index.10000;
     position: fixed; inset: 0; z-index: 10000;
     display: none; align-items: center; justify-content: center;
     background: #000; color: #fff; text-align: center;
@@ -336,6 +354,7 @@ function startApp(){
   if(first) selectCard(first);
 
   document.getElementById('introModal').style.display='none';
+     updateOrientationGate();                 // ★ 추가
 }
 
 /* ===== 레이아웃 ===== */
@@ -573,9 +592,12 @@ function isPortrait(){
 }
 function updateOrientationGate(){
   const gate = document.getElementById('landscapeGate');
+  const introOpen = document.getElementById('introModal')?.style.display !== 'none';
   const isMobileLike = Math.min(window.innerWidth, window.innerHeight) <= 900;
-  if(isMobileLike && isPortrait()) gate.classList.add('show');
-  else gate.classList.remove('show');
+  if (!introOpen && isMobileLike && window.matchMedia("(orientation: portrait)").matches)
+    gate.classList.add('show');
+  else
+    gate.classList.remove('show');
 }
 async function forceLandscape(){
   try{
