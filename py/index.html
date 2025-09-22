@@ -3,50 +3,39 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PyScript · GitHub Pages 통합 예제</title>
+  <title>PyScript · 로컬/레포 모두 정규화</title>
 
   <link rel="stylesheet" href="https://pyscript.net/releases/2025.8.1/pyscript.css" />
   <script type="module" src="https://pyscript.net/releases/2025.8.1/core.js"></script>
 
   <py-config>{ "packages": [] }</py-config>
   <style>
-    body{margin:0;background:#0b1220;color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-    .wrap{max-width:1000px;margin:40px auto;padding:0 16px}
+    body{margin:0;background:#0b1220;color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    .wrap{max-width:980px;margin:40px auto;padding:0 16px}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
     .card{background:#121a2a;border:1px solid #223;padding:18px;border-radius:14px}
     .row{display:flex;gap:8px;flex-wrap:wrap}
     button{padding:10px 14px;border-radius:10px;border:1px solid #334;background:#1a2236;color:#e9eef6;cursor:pointer}
-    pre{white-space:pre-wrap;background:#0f1525;border:1px solid #334;border-radius:10px;padding:10px;min-height:96px;margin-top:10px}
+    pre{white-space:pre-wrap;background:#0f1525;border:1px solid #334;border-radius:10px;padding:10px;min-height:92px;margin-top:10px}
     input[type=file]{display:none}
-    .drop{border:2px dashed #334;border-radius:12px;min-height:120px;display:grid;place-items:center;background:#0f1525}
-    .muted{opacity:.85}
     @media (max-width:860px){ .grid{grid-template-columns:1fr} }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="card">
-      <strong id="env"></strong>
-    </div>
-
     <div class="grid">
-      <!-- A. 로컬 파일 -->
       <section class="card">
-        <h2>A) 로컬 파일 실행</h2>
-        <p class="muted">버튼 또는 드래그&드롭으로 <code>.py</code> 실행</p>
+        <h2>A) 로컬 파일 실행(정규화 포함)</h2>
         <div class="row">
           <button py-click="open_picker">파일 열기</button>
           <button py-click="clear_out('outA')">출력 지우기</button>
         </div>
         <input id="picker" type="file" accept=".py,.txt" />
-        <div id="drop" class="drop">여기로 .py 파일 드롭</div>
         <pre id="outA"></pre>
       </section>
 
-      <!-- B. 레포 파일 -->
       <section class="card">
-        <h2>B) 레포 파일 실행</h2>
-        <p class="muted"><code>./scripts/demo.py</code> → 실패 시 RAW 재시도</p>
+        <h2>B) 레포 파일 실행(정규화+Fallback)</h2>
         <div class="row">
           <button py-click="run_repo">demo.py 실행</button>
           <button py-click="clear_out('outB')">출력 지우기</button>
@@ -59,89 +48,90 @@
   <script type="py">
 from pyscript import display, when
 from pyodide.http import pyfetch
-from js import document, window
-import sys, io, traceback
+from js import document
+import sys, io, re, traceback
 
-USER="newfacesandnewfacess"; REPO="poly-data"; PATH="py/scripts/demo2.py"
-RAW_HEAD=f"https://raw.githubusercontent.com/{USER}/{REPO}/HEAD/{PATH}"
-RAW_MAIN=f"https://raw.githubusercontent.com/{USER}/{REPO}/main/{PATH}"
+USER="newfacesandnewfacess"  # ← 본인
+REPO="poly-data"
+PATH="py/scripts/demo.py"
 
-def env_check():
-    host = window.location.hostname or ""
-    ok = (".github.io" in host) or (host.endswith(".pages.dev")) or (host=="localhost")
-    document.getElementById("env").innerText = ("✅ Pages 환경 감지됨: " + host) if ok else ("⚠️ Pages가 아닌 주소: " + host)
+def raw(ref): return f"https://raw.githubusercontent.com/{USER}/{REPO}/{ref}/{PATH}"
 
-def w(target, msg): display(str(msg), target=target, append=True)
+UNSAFE = {
+    "\u00A0":"NBSP", "\u202F":"NARROW_NBSP", "\u2007":"FIGURE_SPACE",
+    "\u200B":"ZWSP", "\u200C":"ZWNJ", "\u200D":"ZWJ",
+    "\u2060":"WORD_JOINER", "\uFEFF":"BOM"
+}
+import re as _re
+_pattern = _re.compile("[" + "".join(UNSAFE.keys()) + "]")
 
-def run_code(code, target):
-    buf = io.StringIO(); old = sys.stdout; sys.stdout = buf
+def w(t,msg): display(str(msg), target=t, append=True)
+
+def sanitize(src:str):
+    counts={}
+    def repl(m):
+        ch=m.group(0); counts[ch]=counts.get(ch,0)+1
+        return " " if ch in ("\u00A0","\u202F","\u2007") else ""
+    clean=_pattern.sub(repl,src)
+    return clean, counts
+
+def run_code(code:str, t:str):
+    buf=io.StringIO(); old=sys.stdout; sys.stdout=buf
     ret=None
     try:
         ns={}; exec(code, ns, ns)
         if "main" in ns and callable(ns["main"]): ret = ns["main"]()
     finally:
-        sys.stdout = old
-    out = buf.getvalue()
-    if out: w(target, f"[print]\n{out}")
-    if ret is not None: w(target, f"[main()]\n{ret}\n")
-    if not out and ret is None: w(target, "[안내] 출력/반환 없음\n")
+        sys.stdout=old
+    out=buf.getvalue()
+    if out: w(t, f"[print]\n{out}")
+    if ret is not None: w(t, f"[main()]\n{ret}\n")
+    if not out and ret is None: w(t, "[안내] 출력/반환 없음\n")
 
 # A) 로컬 파일
 def open_picker(e=None): document.getElementById("picker").click()
 def clear_out(target="outA", e=None): document.getElementById(target).innerText = ""
 
-@when("change", "#picker")
+@when("change","#picker")
 async def on_pick(e):
-    files = e.target.files
-    if not files or files.length==0: w("outA","[안내] 파일 선택 취소\n"); return
-    file = files[0]
+    t="outA"
+    files=e.target.files
+    if not files or files.length==0: w(t,"[안내] 선택 취소\n"); return
+    f=files[0]
     try:
-        code = await file.text()
-        w("outA", f"▶ {file.name} 실행\n"); run_code(code,"outA")
+        raw = await f.text()
+        code, counts = sanitize(raw)
+        if counts:
+            rep = ", ".join(f"{UNSAFE[k]}×{v}" for k,v in counts.items())
+            w(t, f"[정규화] 숨은 문자 치환: {rep}\n")
+        run_code(code, t)
     except Exception as ex:
-        w("outA","[에러]\n" + "".join(traceback.format_exception_only(type(ex),ex)))
+        w(t, "[에러]\n" + "".join(traceback.format_exception_only(type(ex), ex)))
 
-drop = document.getElementById("drop")
-def prevent(ev): ev.preventDefault()
-for ev in ["dragenter","dragover","dragleave","drop"]: drop.addEventListener(ev, prevent)
-
-@when("drop", "#drop")
-async def on_drop(e):
-    dt = e.dataTransfer; files = dt.files if dt else None
-    if not files or files.length==0: w("outA","[안내] 드롭된 파일 없음\n"); return
-    f = files[0]
-    if not f.name.endswith(".py"): w("outA","[안내] .py만 실행 가능\n"); return
-    code = await f.text(); w("outA", f"▶ {f.name} 실행\n"); run_code(code,"outA")
-
-# B) 레포 파일 실행
+# B) 레포 파일
 async def run_repo(e=None):
-    tgt = "outB"
+    t="outB"
     try:
         # 1) 로컬
-        w(tgt,"▶ ./scripts/demo.py 불러오는 중...\n")
         try:
-            r = await pyfetch(f"./{PATH}")
-            if r.status!=200: raise RuntimeError(f"HTTP {r.status}")
-            code = await r.text()
+            r = await pyfetch("./scripts/demo.py")
+            if r.status != 200: raise RuntimeError(f"HTTP {r.status}")
+            raw = await r.text()
         except Exception as e1:
-            w(tgt,f"[안내] 로컬 실패 → RAW(HEAD) 재시도: {e1}\n")
-            try:
-                r2 = await pyfetch(RAW_HEAD)
-                if r2.status!=200: raise RuntimeError(f"RAW(HEAD) {r2.status}")
-                code = await r2.text()
-            except Exception as e2:
-                w(tgt,f"[안내] RAW(HEAD) 실패 → RAW(main) 재시도: {e2}\n")
-                r3 = await pyfetch(RAW_MAIN)
-                if r3.status!=200: raise RuntimeError(f"RAW(main) {r3.status}")
-                code = await r3.text()
-        run_code(code, tgt)
+            w(t, f"[안내] 로컬 실패 → RAW 재시도: {e1}\n")
+            raw=None
+            for ref in ["HEAD","main","master"]:
+                rr = await pyfetch(raw(ref))
+                if rr.status==200: raw = await rr.text(); w(t,f"[안내] RAW({ref}) 성공\n"); break
+                else: w(t,f"  - RAW({ref}) HTTP {rr.status}\n")
+            if raw is None: w(t,"[에러] RAW(HEAD/main/master) 모두 실패\n"); return
+        code, counts = sanitize(raw)
+        if counts:
+            rep = ", ".join(f"{UNSAFE[k]}×{v}" for k,v in counts.items())
+            w(t, f"[정규화] 숨은 문자 치환: {rep}\n")
+        run_code(code, t)
     except Exception as ex:
-        w(tgt,"[에러]\n" + "".join(traceback.format_exception_only(type(ex),ex)))
-
-# 초기 표시
-env_check()
+        w(t, "[에러]\n" + "".join(traceback.format_exception_only(type(ex), ex)))
   </script>
 </body>
 </html>
-
-
