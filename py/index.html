@@ -2,9 +2,12 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>PyScript · 로컬 .py 실행(진단 강화)</title>
-<link rel="stylesheet" href="https://pyscript.net/releases/2025.8.1/core.css"/>
+<title>PyScript · 로컬 .py 실행(진단 강화 · 최소 수정)</title>
+
+<!-- CSS는 pyscript.css가 맞습니다 -->
+<link rel="stylesheet" href="https://pyscript.net/releases/2025.8.1/pyscript.css"/>
 <script type="module" src="https://pyscript.net/releases/2025.8.1/core.js"></script>
+
 <py-config>{ "packages": [] }</py-config>
 <style>
   body{margin:0;background:#0b1220;color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
@@ -31,8 +34,8 @@
 
 <script type="py">
 from pyscript import display, when
-from pyodide.ffi import create_proxy, to_py
-from js import document, window
+from pyodide.ffi import create_proxy   # ⬅️ to_py 제거
+from js import document, window, TextDecoder, Uint8Array
 import sys, io, traceback, re
 
 def w(m): display(str(m), target="out", append=True)
@@ -46,7 +49,7 @@ document.getElementById("env").innerHTML = (
   else f'<b class="warn">⚠️ Pages 아님:</b> {host} — github.io 주소로 여세요'
 )
 
-# window.onerror → 로그로
+# 전역 에러 → 로그
 def _onerr(ev):
     try:
         msg = getattr(ev, "message", None) or "unknown"
@@ -65,9 +68,18 @@ def sanitize(src:str):
         return " " if ch in ("\u00A0","\u202F","\u2007") else ""
     return _pattern.sub(repl, src), cnt
 
+async def read_file_text(f):
+    """file.text() 우선, 실패 시 ArrayBuffer → JS TextDecoder('utf-8')"""
+    try:
+        return await f.text()
+    except Exception as e_text:
+        lg(f"text() 실패 → arrayBuffer(): {e_text}\n")
+        ab = await f.arrayBuffer()
+        code = TextDecoder.new("utf-8").decode(Uint8Array.new(ab))
+        return code
+
 def open_picker(e=None):
-    lg("open_picker\n")
-    document.getElementById("picker").click()
+    lg("open_picker\n"); document.getElementById("picker").click()
 
 @when("change","#picker")
 async def on_change(e):
@@ -80,17 +92,9 @@ async def run_selected(files):
         lg("파일 없음/취소\n"); return
     f = files[0]; lg(f"선택됨: {f.name} ({f.size} bytes)\n")
     try:
-        # text() 실패 대비: ArrayBuffer Fallback
-        try:
-            code = await f.text()
-        except Exception as e_text:
-            lg(f"text() 실패 → arrayBuffer(): {e_text}\n")
-            ab = await f.arrayBuffer()
-            code = bytes(to_py(ab)).decode("utf-8","replace")
-
+        code = await read_file_text(f)
         code, cnt = sanitize(code)
-        if cnt:
-            lg("[정규화] " + ", ".join(f"{UNSAFE[k]}×{v}" for k,v in cnt.items()) + "\n")
+        if cnt: lg("[정규화] " + ", ".join(f"{UNSAFE[k]}×{v}" for k,v in cnt.items()) + "\n")
 
         buf=io.StringIO(); old=sys.stdout; sys.stdout=buf
         ret=None
@@ -120,4 +124,5 @@ except Exception:
 
 lg("READY\n")
 </script>
-</body></html>
+</body>
+</html>
