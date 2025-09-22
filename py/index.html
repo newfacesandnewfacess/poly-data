@@ -3,9 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PyScript · 안정화 버전</title>
+  <title>PyScript · 안정화(권장)</title>
 
-  <!-- 1) 권장 로더 -->
   <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
   <script type="module" src="https://pyscript.net/latest/core.js"></script>
 
@@ -14,8 +13,8 @@
     .wrap{max-width:960px;margin:48px auto;padding:0 16px}
     .card{background:#121a2a;border:1px solid #223;padding:18px;border-radius:14px}
     button{padding:10px 14px;border-radius:10px;border:1px solid #334;background:#1a2236;color:#e9eef6;cursor:pointer}
-    #out{white-space:pre-wrap;background:#0f1525;border:1px solid #334;border-radius:10px;padding:10px;min-height:92px;margin-top:10px}
-    .hint{opacity:.8;font-size:.95rem}
+    pre#out{white-space:pre-wrap;background:#0f1525;border:1px solid #334;border-radius:10px;padding:10px;min-height:92px;margin-top:10px}
+    .hint{opacity:.85}
   </style>
 
   <py-config>
@@ -28,31 +27,35 @@
   <div class="wrap">
     <div class="card">
       <h1>PyScript 실행 안정화</h1>
-      <p class="hint">PyScript 로더가 실패하면 아래에 원인을 표시합니다.</p>
+      <p class="hint">PyScript 로더나 CORS 문제가 있어도 원인과 대체경로를 안내합니다.</p>
       <button py-click="run_from_repo()">demo.py 실행</button>
       <button py-click="clear_out()">출력 지우기</button>
-      <div id="out"></div>
+      <pre id="out"></pre>
     </div>
   </div>
 
   <py-script>
-from pyscript import Element
+from pyscript import display
 from pyodide.http import pyfetch
+from js import document
 
-RAW_URL = None  # 필요 시 "https://raw.githubusercontent.com/{USER}/{REPO}/HEAD/scripts/demo.py"
+RAW_URL = None
+# 필요 시 다음처럼 설정: 
+# RAW_URL = "https://raw.githubusercontent.com/{USER}/{REPO}/HEAD/scripts/demo.py"
+
+def w(msg): display(str(msg), target="out", append=True)
 
 async def run_from_repo():
-    out = Element("out")
     try:
-        out.write("[불러오는 중] ./scripts/demo.py ...\n")
+        w("[불러오는 중] scripts/demo.py ...\\n")
         try:
-            resp = await pyfetch("./scripts/demo.py")
+            resp = await pyfetch("scripts/demo.py")
             if resp.status != 200:
                 raise RuntimeError(f"HTTP {resp.status}")
             code = await resp.text()
         except Exception as e1:
             if RAW_URL:
-                out.write(f"[안내] 로컬 fetch 실패 → RAW로 재시도: {e1}\n")
+                w(f"[안내] 로컬 fetch 실패 → RAW로 재시도: {e1}\\n")
                 resp2 = await pyfetch(RAW_URL, method="GET")
                 if resp2.status != 200:
                     raise RuntimeError(f"RAW fetch 실패: HTTP {resp2.status}")
@@ -63,18 +66,17 @@ async def run_from_repo():
         ns = {}
         exec(code, ns, ns)
         if "main" in ns and callable(ns["main"]):
-            out.write(str(ns["main"]()) + "\n")
+            w(ns["main"]()); w("\\n")
         else:
-            out.write("[안내] demo.py에 main()이 없습니다.\n")
+            w("[안내] demo.py에 main()이 없습니다.\\n")
 
     except Exception as e:
-        out.write("[에러] PyScript 초기화/네트워크 문제일 수 있습니다.\n")
-        out.write(f"└ 상세: {e}\n")
-        out.write("※ 점검: 1) Pages URL로 열었는지 2) core.js 200 OK인지 3) ./scripts/demo.py 경로/대소문자\n")
+        w("[에러] PyScript 초기화/네트워크/경로 문제일 수 있습니다.\\n")
+        w(f"└ 상세: {e}\\n")
+        w("※ 점검: 1) github.io(Pages)로 열기  2) Network에서 core.js 200 OK 확인  3) scripts/demo.py 경로·대소문자\\n")
 
 def clear_out():
-    Element("out").clear()
+    document.getElementById("out").innerText = ""
   </py-script>
 </body>
-
 </html>
