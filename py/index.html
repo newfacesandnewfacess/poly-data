@@ -3,92 +3,83 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PyScript · 브랜치 Fallback + when 데코레이터</title>
+  <title>PyScript · 파일 열기 → 실행 (최소)</title>
 
+  <!-- PyScript 고정 버전 -->
   <link rel="stylesheet" href="https://pyscript.net/releases/2025.8.1/pyscript.css" />
   <script type="module" src="https://pyscript.net/releases/2025.8.1/core.js"></script>
 
   <py-config>{ "packages": [] }</py-config>
-
   <style>
     body{margin:0;background:#0b1220;color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
     .wrap{max-width:960px;margin:48px auto;padding:0 16px}
     .card{background:#121a2a;border:1px solid #223;padding:18px;border-radius:14px}
-    .row{display:flex;gap:8px;flex-wrap:wrap}
     button{padding:10px 14px;border-radius:10px;border:1px solid #334;background:#1a2236;color:#e9eef6;cursor:pointer}
-    pre#out{white-space:pre-wrap;background:#0f1525;border:1px solid #334;border-radius:10px;padding:10px;min-height:92px;margin-top:10px}
+    pre#out{white-space:pre-wrap;background:#0f1525;border:1px solid #334;border-radius:10px;padding:10px;min-height:96px;margin-top:10px}
+    input[type=file]{display:none}
+    .muted{opacity:.8}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>PyScript · 브랜치 Fallback + when</h1>
-      <div class="row">
-        <button py-click="run_from_repo">demo.py 실행(py-click)</button>
-        <button id="run_alt">demo.py 실행(when 데코레이터)</button>
+      <h1>PyScript · 파일 열기 → 실행</h1>
+      <p class="muted">버튼을 눌러 <code>.py</code> 파일을 선택하면, 브라우저에서 실행합니다.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button py-click="open_picker">파일 열기 → 실행</button>
         <button py-click="clear_out">출력 지우기</button>
       </div>
+      <input id="picker" type="file" accept=".py,.txt" />
       <pre id="out"></pre>
     </div>
   </div>
 
   <script type="py">
 from pyscript import display, when
-from pyodide.http import pyfetch
 from js import document
+import sys, io, traceback
 
-USER  = "newfacesandnewfacess"
-REPO  = "poly-data"
-PATH  = "scripts/demo.py"
+def w(msg:str): display(str(msg), target="out", append=True)
 
-def raw_url(branch):  # HEAD 또는 main 분기
-    return f"https://raw.githubusercontent.com/{USER}/{REPO}/{branch}/{PATH}"
+def open_picker(event=None):
+    document.getElementById("picker").click()
 
-def w(msg): display(str(msg), target="out", append=True)
-
-@when("click", "#run_alt")
-async def run_alt(event):
-    await run_from_repo(event)
-
-async def run_from_repo(event=None):
+@when("change", "#picker")
+async def handle_file(event):
+    files = event.target.files
+    if not files or files.length == 0:
+        w("[안내] 파일 선택이 취소되었습니다.\n")
+        return
+    file = files[0]
+    name = file.name
     try:
-        w("[불러오는 중] ./scripts/demo.py ...\\n")
-        # 1) 로컬 경로 우선
+        # JS File API의 Promise를 그대로 await
+        code = await file.text()
+
+        # print 캡처를 위해 stdout 리다이렉트
+        buf = io.StringIO()
+        old = sys.stdout
+        sys.stdout = buf
         try:
-            resp = await pyfetch(f"./{PATH}")
-            if resp.status != 200:
-                raise RuntimeError(f"HTTP {resp.status}")
-            code = await resp.text()
-        except Exception as e1:
-            w(f"[안내] 로컬 실패 → RAW(HEAD) 재시도: {e1}\\n")
-            # 2) RAW(HEAD)
-            try:
-                r2 = await pyfetch(raw_url("HEAD"))
-                if r2.status != 200:
-                    raise RuntimeError(f"RAW(HEAD) HTTP {r2.status}")
-                code = await r2.text()
-            except Exception as e2:
-                w(f"[안내] RAW(HEAD) 실패 → RAW(main) 재시도: {e2}\\n")
-                # 3) RAW(main)
-                r3 = await pyfetch(raw_url("main"))
-                if r3.status != 200:
-                    raise RuntimeError(f"RAW(main) HTTP {r3.status}")
-                code = await r3.text()
+            ns = {}
+            exec(code, ns, ns)
+            ret = None
+            if "main" in ns and callable(ns["main"]):
+                ret = ns["main"]()
+        finally:
+            sys.stdout = old
 
-        ns = {}
-        exec(code, ns, ns)
-        if "main" in ns and callable(ns["main"]):
-            w(ns["main"]()); w("\\n")
-        else:
-            w("[안내] demo.py에 main()이 없습니다.\\n")
-
+        output = buf.getvalue()
+        w(f"▶ 실행 파일: {name}\n")
+        if output:
+            w(f"[print 출력]\n{output}")
+        if ret is not None:
+            w(f"[main() 반환값]\n{ret}\n")
+        if not output and ret is None:
+            w("[안내] print 출력이나 main() 반환이 없습니다.\n")
     except Exception as e:
-        w("[에러] 초기화/네트워크/경로 문제일 수 있습니다.\\n")
-        w(f"└ 상세: {e}\\n")
-        w("※ 점검: 1) github.io(Pages)로 열기  2) core.js 200 OK  3) scripts/demo.py 경로·대소문자\\n")
-
-def clear_out(event=None):
-    document.getElementById("out").innerText = ""
+        w("[에러] 실행 중 오류가 발생했습니다.\n")
+        w("".join(traceback.format_exception_only(type(e), e)))
   </script>
 </body>
 </html>
