@@ -43,7 +43,7 @@ from pyodide.http import pyfetch
 
 async def run_from_repo():
     out = Element("out")
-    out.write("[불러오는 중] scripts/demo.py ...\n")
+    out.write("[불러오는 중] ./scripts/demo.py ...\n")
     try:
         resp = await pyfetch("scripts/demo.py")   # 같은 레포(동일 출처)라 CORS 문제 없음
         code = await resp.text()
@@ -62,3 +62,4 @@ def clear_out():
   </py-script>
 </body>
 </html>
+
