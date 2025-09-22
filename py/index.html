@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>PDF → 이미지 추출 (범위/정보 표시 · JsProxy 대응)</title>
+<title>PDF → 이미지 추출 (최소 수정 · JPEG/JPX만)</title>
 
 <link rel="stylesheet" href="https://pyscript.net/releases/2025.8.1/pyscript.css"/>
 <script type="module" src="https://pyscript.net/releases/2025.8.1/core.js"></script>
@@ -57,7 +57,7 @@
 <script type="py">
 from pyscript import display, when
 from js import document, fetch, Uint8Array
-import io, base64, zipfile, traceback, re
+import io, base64, zipfile, traceback
 
 USER="newfacesandnewfacess"; REPO="poly-data"
 
@@ -73,33 +73,22 @@ def clear_b(e=None):
     set_html("galB",""); document.getElementById("zipB").style.display="none"
     document.getElementById("logB").innerText=""
 
-# ── 핵심: 어떤 형태의 바이너리(JS TypedArray/ArrayBuffer/bytes 등)라도 Python bytes로 강제 변환
-def to_py_bytes(obj):
+def to_bytes(obj):
     try:
-        if isinstance(obj, (bytes, bytearray, memoryview)):
-            return bytes(obj)
-    except Exception:
-        pass
-    # JsProxy(예: Uint8Array, ArrayBuffer) → Uint8Array.new(...) → bytes(...)
-    try:
-        return bytes(Uint8Array.new(obj))
-    except Exception:
-        pass
-    # 최후: bytes() 시도
-    try:
-        return bytes(obj)
-    except Exception as e:
-        raise TypeError(f"Unsupported binary type for conversion: {type(obj)} ({e})")
+        if isinstance(obj, (bytes, bytearray, memoryview)): return bytes(obj)
+    except Exception: pass
+    try: return bytes(Uint8Array.new(obj))
+    except Exception: pass
+    try: return bytes(obj)
+    except Exception as e: raise TypeError(f"unsupported binary: {type(obj)} ({e})")
 
-async def ensure_bytes_from_file(f):
-    ab = await f.arrayBuffer()
-    return to_py_bytes(ab)
+async def bytes_from_file(f):
+    return to_bytes(await f.arrayBuffer())
 
-async def ensure_bytes_from_url(url):
+async def bytes_from_url(url):
     r = await fetch(url)
     if not r.ok: raise RuntimeError(f"HTTP {r.status}")
-    ab = await r.arrayBuffer()
-    return to_py_bytes(ab)
+    return to_bytes(await r.arrayBuffer())
 
 def parse_range(s, total):
     s=(s or "").strip()
@@ -117,29 +106,55 @@ def parse_range(s, total):
             if 1<=k<=total: out.add(k)
     return out
 
-def images_from_pdf(pdf_bytes: bytes, wanted=None):
+def name_str(x):
+    s=str(x)
+    return s[1:] if s.startswith("/") else s
+
+def extract_images_jpeg_only(pdf_bytes: bytes, wanted=None):
+    """
+    Pillow 없이 가능한 경로만 추출:
+      - /Filter 에 DCTDecode → JPG
+      - /Filter 에 JPXDecode → JP2
+    나머지(Flate, CCITT 등)는 건너뜀.
+    """
     from pypdf import PdfReader
     reader = PdfReader(io.BytesIO(pdf_bytes))
     total=len(reader.pages)
     wanted = wanted or set(range(1,total+1))
-    images=[]
+    out=[]; skipped=0; unsupported=0
     for pno, page in enumerate(reader.pages, start=1):
         if pno not in wanted: continue
-        imgs = getattr(page,"images",None)
-        if not imgs: continue
-        for idx, im in enumerate(imgs, start=1):
-            ext=(getattr(im,"extension",None) or "bin").lower()
-            mime={"jpg":"jpeg","jpeg":"jpeg","jp2":"jp2","png":"png","tiff":"tiff"}.get(ext,"octet-stream")
-            data = to_py_bytes(getattr(im,"data",b""))   # ⬅️ 여기서 항상 Python bytes로 통일
-            fname=f"p{pno:03d}_{idx:02d}.{ext}"
-            images.append((fname,f"image/{mime}",data,len(data)))
-    return images, total
+        res = page.get("/Resources") or {}
+        xref = res.get("/XObject")
+        if not xref: continue
+        xobjs = xref.get_object()
+        for key, ref in xobjs.items():
+            xobj = ref.get_object()
+            if xobj.get("/Subtype") != "/Image": continue
+            flt = xobj.get("/Filter")
+            if flt is None:
+                unsupported += 1; continue
+            flts = list(flt) if hasattr(flt, "__iter__") and not isinstance(flt,(bytes,bytearray)) else [flt]
+            fltnames = [name_str(f) for f in flts]
+            if "DCTDecode" in fltnames:
+                ext, mime = "jpg", "image/jpeg"
+            elif "JPXDecode" in fltnames:
+                ext, mime = "jp2", "image/jp2"
+            else:
+                unsupported += 1; continue  # Flate/CCITT 등은 Pillow 필요 → 스킵
+            try:
+                data = xobj.get_data()  # DCT/JPX는 디코딩 없이 원본 바이트 제공
+                data = to_bytes(data)
+                fname=f"p{pno:03d}_{name_str(key)}.{ext}"
+                out.append((fname, mime, data, len(data)))
+            except Exception:
+                skipped += 1
+    return out, total, skipped, unsupported
 
 def set_zip_link(link_id, images):
     bio=io.BytesIO()
     with zipfile.ZipFile(bio,"w",zipfile.ZIP_DEFLATED) as z:
-        for fname,_,data,_ in images:
-            z.writestr(fname,data)            # data는 이미 Python bytes
+        for fname,_,data,_ in images: z.writestr(fname,data)
     b64=base64.b64encode(bio.getvalue()).decode("ascii")
     a=document.getElementById(link_id)
     a.href="data:application/zip;base64,"+b64
@@ -151,18 +166,19 @@ async def on_local(e):
         files=e.target.files
         if not files or files.length==0: lg("logA","취소\n"); return
         f=files[0]; lg("logA",f"{f.name} 읽는 중...\n")
-        pdf_bytes=await ensure_bytes_from_file(f)
+        pdf_bytes=await bytes_from_file(f)
         from pypdf import PdfReader
         total=len(PdfReader(io.BytesIO(pdf_bytes)).pages)
         wanted=parse_range(document.getElementById("rngA").value, total)
-        images,_=images_from_pdf(pdf_bytes,wanted)
-        if not images: lg("logA","이미지 없음\n"); return
+        images,total,skipped,unsupported=extract_images_jpeg_only(pdf_bytes,wanted)
+        if not images:
+            lg("logA",f"이미지 없음 (건너뜀:{skipped}, 미지원:{unsupported})\n"); return
         set_html("galA","")
         for fname,mime,data,n in images:
             b64=base64.b64encode(data).decode("ascii")
             append_html("galA",f'<figure><img alt="{fname}" src="data:{mime};base64,{b64}"><figcaption style="opacity:.85">{fname} · {n} bytes</figcaption></figure>')
         set_zip_link("zipA",images)
-        lg("logA",f"총 {len(images)}개 추출 (총 {total}p 중 {len(wanted)}p 처리)\n")
+        lg("logA",f"총 {len(images)}개 추출 · 미지원 {unsupported} · 실패 {skipped} (총 {total}p 중 {len(wanted)}p 처리)\n")
     except Exception as ex:
         lg("logA","[에러]\n"+ "".join(traceback.format_exception_only(type(ex),ex)))
 
@@ -177,7 +193,7 @@ async def run_repo(_=None):
         pdf_bytes=None
         for u in urls:
             try:
-                pdf_bytes=await ensure_bytes_from_url(u)
+                pdf_bytes=await bytes_from_url(u)
                 lg("logB",f"[안내] 로드 성공: {u}\n"); break
             except Exception as e1:
                 lg("logB",f"  - 실패: {u} ({e1})\n")
@@ -186,16 +202,51 @@ async def run_repo(_=None):
         from pypdf import PdfReader
         total=len(PdfReader(io.BytesIO(pdf_bytes)).pages)
         wanted=parse_range(document.getElementById("rngB").value, total)
-        images,_=images_from_pdf(pdf_bytes,wanted)
-        if not images: lg("logB","이미지 없음\n"); return
+        images,total,skipped,unsupported=extract_images_jpeg_only(pdf_bytes,wanted)
+        if not images:
+            lg("logB",f"이미지 없음 (건너뜀:{skipped}, 미지원:{unsupported})\n"); return
         set_html("galB","")
         for fname,mime,d,n in images:
             b64=base64.b64encode(d).decode("ascii")
             append_html("galB",f'<figure><img alt="{fname}" src="data:{mime};base64,{b64}"><figcaption style="opacity:.85">{fname} · {n} bytes</figcaption></figure>')
         set_zip_link("zipB",images)
-        lg("logB",f"총 {len(images)}개 추출 (총 {total}p 중 {len(wanted)}p 처리)\n")
+        lg("logB",f"총 {len(images)}개 추출 · 미지원 {unsupported} · 실패 {skipped} (총 {total}p 중 {len(wanted)}p 처리)\n")
     except Exception as ex:
         lg("logB","[에러]\n"+ "".join(traceback.format_exception_only(type(ex),ex)))
+        
+def extract_images_jpeg_only_verbose(pdf_bytes: bytes, wanted=None):
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    total=len(reader.pages); wanted = wanted or set(range(1,total+1))
+    out=[]; skipped=[]; unsupported=[]
+    def filt_names(flt):
+        if flt is None: return []
+        seq = list(flt) if hasattr(flt,"__iter__") and not isinstance(flt,(bytes,bytearray)) else [flt]
+        return [name_str(x) for x in seq]
+    for pno, page in enumerate(reader.pages, start=1):
+        if pno not in wanted: continue
+        res = page.get("/Resources") or {}; xref = res.get("/XObject")
+        if not xref: continue
+        for key, ref in xref.get_object().items():
+            xobj = ref.get_object()
+            if xobj.get("/Subtype") != "/Image": continue
+            fltn = filt_names(xobj.get("/Filter"))
+            if "DCTDecode" in fltn: ext, mime = "jpg","image/jpeg"
+            elif "JPXDecode" in fltn: ext, mime = "jp2","image/jp2"
+            else:
+                unsupported.append((pno, name_str(key), "+".join(fltn) or "none")); continue
+            try:
+                data = to_bytes(xobj.get_data())
+                out.append((f"p{pno:03d}_{name_str(key)}.{ext}", mime, data, len(data)))
+            except Exception as e:
+                skipped.append((pno, name_str(key), str(e)))
+    return out, total, skipped, unsupported
+
+# 사용부에서 extract_images_jpeg_only → extract_images_jpeg_only_verbose 로 바꾸고,
+# 로그에 unsupported/skipped 내역을 표로 찍어줍니다.        
 </script>
+<p class="hint" style="opacity:.85;margin-top:8px">
+  ※ 일부 브라우저는 <code>JP2</code>(JPEG2000) 미리보기를 지원하지 않습니다. 화면에 안 보이더라도 ZIP에는 포함됩니다.
+</p>
 </body>
 </html>
