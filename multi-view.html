@@ -2,198 +2,518 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>멀티 유튜브 플레이어</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>멀티 유튜브 플레이어 · Video Plane 패치</title>
 <style>
-  body{margin:0;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#111;color:#fff}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;padding:12px}
-  .video-card{background:#222;border-radius:10px;padding:8px;display:flex;flex-direction:column;align-items:center;border:3px solid transparent;cursor:pointer;position:relative}
-  .video-card.selected{border-color:#fff}
-  .controls{width:100%;display:flex;align-items:center;gap:8px;margin-top:6px}
-  .controls input[type=range]{width:45%} /* 50% 축소(90% → 45%) */
-  .btn{background:#333;border:1px solid #555;color:#fff;padding:6px 10px;border-radius:8px;cursor:pointer}
-  .btn:hover{background:#3a3a3a}
-  /* 볼륨 팝오버 */
-  .vol-pop{position:absolute;bottom:72px; /* 버튼 위 */
-           right:12px;background:#1e1e1e;border:1px solid #555;
-           padding:8px 10px;border-radius:10px;display:none}
+  :root{ --cols:1; }
+  html,body{height:100%;margin:0;background:#111;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;overflow:hidden}
+
+  /* ===== 메인 그리드 (3 레이아웃) ===== */
+  #videoGrid{position:fixed;inset:0;display:grid;gap:0;padding:0;width:100vw;height:100vh}
+  /* 1) 균등 2행: 카드 수/2 만큼 열 생성 */
+#videoGrid.layout-eq2r{
+  grid-template-columns: repeat(3, 1fr);  /* 최대 3컬럼 고정 */
+  grid-auto-rows: auto;                    /* 행은 콘텐츠 높이에 맞게 */
+  overflow: auto;                          /* 높이 넘치면 스크롤 */
+}
+  /* 2) 포커스+사이드: 좌 1fr / 우 고정폭(스크롤) */
+  #videoGrid.layout-focus{
+    grid-template-columns: 1fr 360px;
+    grid-template-rows: 100vh;
+    overflow:hidden;
+  }
+
+  .focus-side{
+    grid-column:2; grid-row:1;
+    display:flex; flex-direction:column; gap:12px; padding:8px;
+    overflow-y:auto; max-height:100vh;
+  }
+  .focus-side .video-card{ height:33.33vh; min-height:180px; }
+
+  /* 3) 2×2 */
+  #videoGrid.layout-2x2{
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    overflow:auto;
+  }
+
+/* 균등/2×2는 별도로 16:9 유지 */
+#videoGrid.layout-eq2r .player-shell,
+#videoGrid.layout-2x2 .player-shell{
+  width:100%; aspect-ratio:16/9;
+}
+    
+/* 포커스 메인: 남은 높이(100vh-컨트롤) 모두 사용 */
+#videoGrid.layout-focus .focus-main{ display:flex; height:100vh; }
+#videoGrid.layout-focus .focus-main .video-card{
+  flex:1 1 auto; height:100%; min-height:0; width:100%;
+}
+#videoGrid.layout-focus .focus-main .player-shell{
+  flex:1 1 auto; min-height:0; height:auto;  /* ★ 비율 제거, 플렉스 확장 */aspect-ratio:auto; /* 16:9 해제 */
+}
+/* 포커스 사이드: 썸네일은 16:9로 고정 */
+#videoGrid.layout-focus .focus-side .video-card{ min-height:180px; }
+#videoGrid.layout-focus .focus-side .player-shell{
+  width:100%; aspect-ratio:16/9;
+}
+  /* ===== 카드/플레이어 쉘 ===== */
+.video-card{
+ position:relative; z-index:3;  /* plane 위 */
+  display:flex; flex-direction:column; min-height:0;
+  background:#000; width:100%; border:0;
+ }
+
+.video-card.selected{  border-color: transparent;}
+  /* eq2r/2x2 에선 영상 비율 유지해서 행 높이가 안정적으로 잡히도록 */
+    
+  /* 카드 전체에 그리던 이전 링은 사용 안 함 */
+.video-card.selected::after{ content:none; }
+ /* 선택 링: 플레이어 영역에만 덮어, 컨트롤은 가리지 않음 */
+ .video-card.selected .player-shell::after{
+   content:""; position:absolute; inset:0;
+  border:4px solid #fff; border-radius:8px;
+  pointer-events:none; z-index:6; box-sizing:border-box;
+ }
+.player-shell{ background:#000; position:relative; z-index:4; } /* 높이/비율은 레이아웃별로 아래에서 결정 */
+
+ .controls{  flex:0 0 auto; padding:10px; background:rgba(0,0,0,.72);
+    position:absolute; left:0; right:0; bottom:0; z-index:8; /* plane/쉘 위 */
+  display:flex; gap:8px; align-items:center;
+  padding:10px;
+  background:linear-gradient(to top, rgba(0,0,0,.75), rgba(0,0,0,.35), rgba(0,0,0,0));
+}
+.controls input[type=range]{ width:45%; }
+
+  .btn{background:#222;border:1px solid #555;color:#fff;padding:6px 10px;border-radius:8px;cursor:pointer}
+  .btn:hover{background:#2b2b2b}
+
+  .vol-wrap{position:relative}
+  .vol-pop{position:absolute;bottom:66px;right:12px;background:#1e1e1e;border:1px solid #555;padding:8px 10px;border-radius:10px;display:none}
   .vol-pop.show{display:block}
-  .vol-pop input[type=range]{width:140px}
+  .vol-pop input[type=range]{width:160px}
+
+  /* ===== 인트로 모달 ===== */
+  #introModal{position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;justify-content:center;align-items:center;z-index:9999}
+  #introBox{background:#fff;color:#000;padding:20px;border-radius:12px;width:860px;max-width:94%}
+  #urlRow{display:flex;gap:8px;align-items:center;margin:8px 0}
+  #urlInput{flex:1;padding:8px}
   table{width:100%;border-collapse:collapse;margin-top:12px}
-  th,td{border:1px solid #555;padding:6px;text-align:center}
-  #introModal{position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;justify-content:center;align-items:center}
-  #introBox{background:#fff;color:#000;padding:20px;border-radius:12px;width:560px;max-width:92%}
-  #urlInputs input{margin:4px 0}
-  
+  th,td{border:1px solid #ccc;padding:6px;text-align:center}
+  td.url{max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* 레이아웃 픽커 */
+  .layout-picker{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}
+  .layout-card{flex:1 1 180px;min-width:180px;max-width:260px;border:2px solid #ddd;border-radius:10px;padding:10px;cursor:pointer;user-select:none}
+  .layout-card.active{border-color:#007aff;box-shadow:0 0 0 3px rgba(0,122,255,.25)}
+  .layout-thumb{width:100%;height:120px;background:#f7f7f7;border-radius:8px;display:grid;place-items:center}
+  .layout-caption{margin-top:8px;text-align:center;font-weight:600}
+  .thumb-svg{width:100%;height:100%}
+
+  /* ====== Video Plane: 모든 iframe의 유일한 부모 ====== */
+  .iframe-wrap{
+    position:fixed; left:0; top:0; width:0; height:0;
+   z-index:1;                  /* plane을 가장 아래로 */
+   pointer-events:none;        /* 선택된 것만 JS로 auto 전환 */
+  }
+  .iframe-wrap > div, .iframe-wrap iframe{
+    width:100% !important; height:100% !important; display:block;
+  }
+    @media (max-width: 1200px){
+  #videoGrid.layout-eq2r { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 720px){
+  #videoGrid.layout-eq2r { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
+
 <!-- 인트로 모달 -->
 <div id="introModal">
   <div id="introBox">
-    <h2>유튜브 주소 입력</h2>
-    <div id="urlInputs">
-      <input type="text" placeholder="유튜브 주소 입력" class="yt-url" style="width:80%">
+    <h2>유튜브 주소 입력 & 레이아웃 선택</h2>
+
+    <div id="urlRow">
+      <input id="urlInput" type="text" placeholder="유튜브 주소(https://youtu.be/... 또는 ?v=...)" />
+      <button class="btn" onclick="addUrl()">+ 추가</button>
+      <button class="btn" onclick="startApp()">시작</button>
     </div>
-    <button class="btn" onclick="addInput()">+ 추가</button>
-    <button class="btn" onclick="startApp()">시작</button>
+<div style="display:flex; gap:8px; margin:6px 0;">
+  <button class="btn" onclick="useSampleDefaults(6)">샘플 불러오기</button>
+  <button class="btn" onclick="loadTrendingKR(6)">한국 인기영상 불러오기(베타)</button>
+</div>
+    <div class="layout-picker">
+      <div class="layout-card active" data-layout="eq2r" onclick="pickLayout(this)">
+        <div class="layout-thumb">
+          <svg class="thumb-svg" viewBox="0 0 300 160">
+            <rect x="5" y="5" width="90" height="70" rx="10" stroke="#000" fill="none" stroke-width="4"/>
+            <rect x="105" y="5" width="90" height="70" rx="10" stroke="#000" fill="none" stroke-width="4"/>
+            <rect x="205" y="5" width="90" height="70" rx="10" stroke="#000" fill="none" stroke-width="4"/>
+            <rect x="5" y="85" width="90" height="70" rx="10" stroke="#000" fill="none" stroke-width="4"/>
+            <rect x="105" y="85" width="90" height="70" rx="10" stroke="#000" fill="none" stroke-width="4"/>
+            <rect x="205" y="85" width="90" height="70" rx="10" stroke="#000" fill="none" stroke-width="4"/>
+          </svg>
+        </div>
+        <div class="layout-caption">균등 2행</div>
+      </div>
+
+      <div class="layout-card" data-layout="focus" onclick="pickLayout(this)">
+        <div class="layout-thumb">
+          <svg class="thumb-svg" viewBox="0 0 300 160">
+            <rect x="5" y="5" width="200" height="150" rx="12" stroke="#000" fill="none" stroke-width="4"/>
+            <rect x="215" y="10" width="80" height="45" rx="10" stroke="#000" fill="none" stroke-width="4"/>
+            <rect x="215" y="58" width="80" height="45" rx="10" stroke="#000" fill="none" stroke-width="4"/>
+            <rect x="215" y="106" width="80" height="45" rx="10" stroke="#000" fill="none" stroke-width="4"/>
+          </svg>
+        </div>
+        <div class="layout-caption">포커스 + 사이드</div>
+      </div>
+
+      <div class="layout-card" data-layout="2x2" onclick="pickLayout(this)">
+        <div class="layout-thumb">
+          <svg class="thumb-svg" viewBox="0 0 300 160">
+            <rect x="5" y="5" width="140" height="70" rx="12" stroke="#000" fill="none" stroke-width="4"/>
+            <rect x="155" y="5" width="140" height="70" rx="12" stroke="#000" fill="none" stroke-width="4"/>
+            <rect x="5" y="85" width="140" height="70" rx="12" stroke="#000" fill="none" stroke-width="4"/>
+            <rect x="155" y="85" width="140" height="70" rx="12" stroke="#000" fill="none" stroke-width="4"/>
+          </svg>
+        </div>
+        <div class="layout-caption">2 × 2</div>
+      </div>
+    </div>
+
     <table id="urlTable">
-      <thead><tr><th>순번</th><th>썸네일</th><th>주소</th><th>삭제</th></tr></thead>
+      <thead><tr><th style="width:60px">순번</th><th style="width:100px">썸네일</th><th>주소</th><th style="width:80px">삭제</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
 </div>
 
-<!-- 메인 -->
-<div class="grid" id="videoGrid"></div>
+<!-- 메인 그리드 -->
+<div id="videoGrid" class="layout-eq2r"></div>
+
+<!-- Video Plane: 모든 iframe 래퍼는 여기에(혹은 body 직속) -->
+<div id="videoPlane"></div>
 
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
-let players = [];
+/* ===== 상태 ===== */
+let pending = [];
+let players = [];            // YT.Player 인스턴스
+let wraps   = [];            // 각 플레이어의 고정 래퍼(.iframe-wrap)
 let videoCount = 0;
+let currentLayout = 'eq2r';
 
-/* 입력창 추가 */
-function addInput(){
-  const div = document.getElementById('urlInputs');
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.placeholder = '유튜브 주소 입력';
-  input.className = 'yt-url';
-  input.style.width = '80%';
-  div.appendChild(input);
-}
-
-/* 시작 */
-function startApp(){
-  const urls = [...document.querySelectorAll('.yt-url')]
-                .map(i=>i.value.trim()).filter(Boolean);
-  const tbody = document.querySelector('#urlTable tbody');
-  tbody.innerHTML = '';
-  urls.forEach((url, i)=>{
-    const id = extractVideoID(url);
-    if(!id) return;
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${i+1}</td>
-      <td><img src="https://img.youtube.com/vi/${id}/hqdefault.jpg" width="80"></td>
-      <td>${url}</td>
-      <td><button class="btn" onclick="this.closest('tr').remove()">삭제</button></td>`;
-    tbody.appendChild(tr);
-    createPlayer(id);
-  });
-  document.getElementById('introModal').style.display = 'none';
-}
-
-/* YouTube ID 추출 */
+/* ===== 유틸 ===== */
 function extractVideoID(url){
-  const m = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  const m = (url||'').trim().match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
   return m ? m[1] : null;
 }
 
-/* 플레이어 생성 */
-function createPlayer(videoId){
-  const idx = videoCount;
-  const card = document.createElement('div');
-  card.className = 'video-card';
-  card.dataset.idx = idx;     
-  card.onclick = () => selectCard(card);   // 카드 클릭시 선택 + 전체 뮤트
-
-  card.innerHTML = `
-  <div class="video-card" data-idx="${idx}" onclick="selectCard(this)">
-    <div id="player${idx}"></div>
-    <div class="controls" onclick="event.stopPropagation()">
-      <input id="seek${idx}" type="range" min="0" max="100" value="0" step="1"
-             oninput="seekVideo(${idx}, this.value)">
-      <button id="playBtn${idx}" class="btn" onclick="togglePlay(${idx})">▶ PLAY</button>
-      <div style="position:relative">
-        <button id="muteBtn${idx}" class="btn" onclick="toggleMute(${idx})">🔇</button>
-        <div id="volPop${idx}" class="vol-pop">
-          <input id="volRange${idx}" type="range" min="0" max="100" value="50"
-                 oninput="setVolume(${idx}, this.value)">
-        </div>
-      </div>
-    </div>
-	</div>
-  `;
-  document.getElementById('videoGrid').appendChild(card);
-
-  players[idx] = new YT.Player(`player${idx}`, {
-    height: '180', width: '320',
-    videoId: videoId,
-    playerVars: {playsinline:1},
-    events: {'onReady': onPlayerReady}
-  });
-  videoCount++;
+/* ===== 모달 ===== */
+function pickLayout(cardEl){
+  document.querySelectorAll('.layout-card').forEach(el=>el.classList.remove('active'));
+  cardEl.classList.add('active');
+  currentLayout = cardEl.dataset.layout;
 }
 
-/* 선택 처리: 선택 변경 시 모든 영상 뮤트 */
+function addUrl(){
+  const input = document.getElementById('urlInput');
+  const url = input.value.trim();
+  const id = extractVideoID(url);
+  if(!id){ alert('유튜브 주소 형식이 아닙니다.'); return; }
+  pending.push(url);
+  input.value = '';
+  renderPending();
+}
+function removePending(i){ pending.splice(i,1); renderPending(); }
+function renderPending(){
+  const tbody = document.querySelector('#urlTable tbody'); tbody.innerHTML='';
+  pending.forEach((url,i)=>{
+    const id = extractVideoID(url);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td><img src="https://img.youtube.com/vi/${id}/hqdefault.jpg" width="80" height="45" style="object-fit:cover;border-radius:6px"/></td>
+      <td class="url" title="${url}">${url}</td>
+      <td><button class="btn" onclick="removePending(${i})">삭제</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+/* ==== 기본 샘플 영상(안전/공개 데모 위주) ==== */
+const DEFAULT_VIDEO_IDS = [
+  "M7lc1UVf-VE", // YouTube IFrame API Demo (Google 공식)
+  "aqz-KE-bpKQ", // Big Buck Bunny (오픈콘텐츠)
+  "LXb3EKWsInQ", // 4K Costa Rica (샘플)
+  "ScMzIvxBSi4", // Sample/ED 영상
+  "e-ORhEE9VVg", // (백업) 대중적 샘플
+  "kXYiU_JCYtU"  // (백업) 대중적 샘플
+];
+
+/* 모달 리스트를 샘플로 채우기 */
+function useSampleDefaults(count=6){
+  pending = DEFAULT_VIDEO_IDS.slice(0, count).map(id => `https://youtu.be/${id}`);
+  renderPending();
+}
+
+/* ==== (선택) 한국 인기영상 로딩: YouTube Data API v3 필요 ==== */
+/* 사용 전 아래 API 키를 넣으세요. 없으면 자동으로 샘플로 대체됩니다. */
+const YT_API_KEY = ""; // ← 본인 API Key (없으면 비워두세요)
+
+async function loadTrendingKR(max=6){
+  if(!YT_API_KEY){ useSampleDefaults(max); return; }
+  try{
+    const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet&chart=mostPopular&regionCode=KR&maxResults=${max}&key=${YT_API_KEY}`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error("YouTube API 요청 실패");
+    const data = await res.json();
+    const ids = (data.items||[]).map(it => it.id).filter(Boolean);
+    if(ids.length === 0) throw new Error("인기영상을 찾지 못함");
+    pending = ids.map(id => `https://youtu.be/${id}`);
+    renderPending();
+  }catch(err){
+    console.warn("[Trending Fallback]", err);
+    useSampleDefaults(max);
+  }
+}
+
+/* 페이지 로드 시, 입력이 비어 있으면 샘플로 미리 채워서 보여주기 */
+window.addEventListener('load', ()=>{
+  if(pending.length===0) useSampleDefaults(6);
+});
+
+/* ===== 시작 ===== */
+function startApp(){
+  if(pending.length===0){
+    const fallback = document.getElementById('urlInput').value.trim();
+    const id = extractVideoID(fallback);
+    if(id) pending.push(fallback);
+  }
+  if(pending.length===0){ useSampleDefaults(6); } // ★ 아무 입력 없어도 자동으로 샘플 채움
+
+  pending.forEach(url=>{
+    const id = extractVideoID(url);
+    if(id) createPlayer(id);
+  });
+  pending = []; renderPending();
+
+  // 사용자 제스처 직후, 모두 음소거 재생(타임 유지용)
+  setTimeout(()=>players.forEach(p=>{ try{ p.mute(); p.playVideo(); }catch(e){} }), 0);
+
+  applyLayout();
+  const first = document.querySelector('.video-card');
+  if(first) selectCard(first);
+
+  document.getElementById('introModal').style.display='none';
+}
+
+/* ===== 레이아웃 ===== */
+function ensureFocusPanes(){
+  const grid = document.getElementById('videoGrid');
+  let main = grid.querySelector('.focus-main');
+  let side = grid.querySelector('.focus-side');
+  if(!main){ main = document.createElement('div'); main.className='focus-main'; grid.appendChild(main); }
+  if(!side){ side = document.createElement('div'); side.className='focus-side'; grid.appendChild(side); }
+}
+function unwrapFocus(){
+  const grid = document.getElementById('videoGrid');
+  const main = grid.querySelector('.focus-main');
+  const side = grid.querySelector('.focus-side');
+  if(main || side){
+    const cards = [...grid.querySelectorAll('.video-card')];
+    cards.forEach(c => grid.appendChild(c));
+    main?.remove(); side?.remove();
+  }
+}
+function applyLayout(){
+  const grid = document.getElementById('videoGrid');
+  grid.classList.remove('layout-eq2r','layout-focus','layout-2x2');
+
+  if(currentLayout==='focus'){
+    grid.classList.add('layout-focus');
+    ensureFocusPanes();
+    const main = grid.querySelector('.focus-main');
+    const side = grid.querySelector('.focus-side');
+    const cards = [...grid.querySelectorAll('.video-card')];
+    if(cards.length){
+      const selected = cards.find(c=>c.classList.contains('selected')) || cards[0];
+      if(selected.parentNode!==main) main.appendChild(selected);
+      cards.forEach(c=>{ if(c!==selected && c.parentNode!==side) side.appendChild(c); });
+    }
+    attachScrollSync(side); // 사이드 스크롤시 좌표 동기화
+  }else{
+    unwrapFocus();
+    if(currentLayout==='eq2r'){
+      grid.classList.add('layout-eq2r');
+       attachScrollSync(grid); // ← 균등 레이아웃 자체 스크롤 동기화
+    }else{
+      grid.classList.add('layout-2x2');
+    attachScrollSync(grid); // ← 2×2도 넘치면 스크롤 동기화
+    }
+  }
+  syncAll(); // 레이아웃 변경 후 좌표 재동기화
+}
+
+/* ===== Video Plane: 좌표 동기화 ===== */
+function getShell(idx){ return document.getElementById(`shell${idx}`); }
+
+function syncPos(idx){
+  const shell = getShell(idx);
+  const wrap  = wraps[idx];
+  if(!shell || !wrap) return;
+  const r = shell.getBoundingClientRect();
+  wrap.style.left   = r.left + 'px';
+  wrap.style.top    = r.top  + 'px';
+  wrap.style.width  = r.width + 'px';
+   wrap.style.height = (r.height - 1) + 'px'; 
+}
+function syncAll(){ for(let i=0;i<players.length;i++) syncPos(i); }
+
+/* 스크롤/리사이즈시 rAF로 동기화 */
+let syncScheduled = false;
+function requestSync(){ if(syncScheduled) return; syncScheduled = true; requestAnimationFrame(()=>{ syncScheduled=false; syncAll(); }); }
+window.addEventListener('resize', requestSync, {passive:true});
+const _scrollTargets = new WeakSet();
+function attachScrollSync(el){
+  if(!el || _scrollTargets.has(el)) return;
+  el.addEventListener('scroll', requestSync, {passive:true});
+  _scrollTargets.add(el);
+}
+
+/* ===== 플레이어 생성 ===== */
+function createPlayer(videoId){
+  const idx = videoCount;
+
+  // 1) 카드 + player-shell (좌표 기준만 제공)
+  const card = document.createElement('div');
+  card.className='video-card';
+  card.dataset.idx = idx;
+  card.onclick = ()=>selectCard(card);
+  card.innerHTML = `
+    <div class="player-shell" id="shell${idx}"></div>
+    <div class="controls" onclick="event.stopPropagation()">
+      <input id="seek${idx}" type="range" min="0" max="100" value="0" step="1" oninput="seekVideo(${idx}, this.value)">
+      <button id="playBtn${idx}" class="btn" onclick="togglePlay(${idx})">▶ PLAY</button>
+      <div class="vol-wrap">
+        <button id="muteBtn${idx}" class="btn" onclick="toggleMute(${idx})">🔇</button>
+        <div id="volPop${idx}" class="vol-pop">
+          <input id="volRange${idx}" type="range" min="0" max="100" value="50" oninput="setVolume(${idx}, this.value)">
+        </div>
+      </div>
+    </div>`;
+  const grid = document.getElementById('videoGrid');
+  if(currentLayout==='focus'){
+    ensureFocusPanes();
+    grid.querySelector('.focus-side').appendChild(card);
+  }else{
+    grid.appendChild(card);
+  }
+
+  // 2) Video Plane 래퍼 + mount (iframe의 유일한 부모)
+  const wrap = document.createElement('div');
+  wrap.className = 'iframe-wrap';
+  wrap.id = `wrap${idx}`;
+  const mount = document.createElement('div'); // YT.Player mount
+  mount.id = `mount${idx}`;
+  wrap.appendChild(mount);
+  document.body.appendChild(wrap);
+  wraps[idx] = wrap;
+
+  // 3) YT.Player 생성 (mount에 붙임)
+  players[idx] = new YT.Player(mount, {
+    videoId,
+    playerVars:{ playsinline:1, rel:0, modestbranding:1, iv_load_policy:3, autoplay:1 },
+    events:{ onReady:onPlayerReady, onStateChange:onPlayerStateChange }
+  });
+
+  videoCount++;
+  applyLayout();   // 레이아웃 갱신
+  requestSync();   // 좌표 최초 동기화
+}
+
+/* ===== 선택/인터랙션 ===== */
+function setInteractable(idx, enabled){
+  const wrap = wraps[idx];
+  if(wrap) wrap.style.pointerEvents = enabled ? 'auto' : 'none';
+}
 function selectCard(card){
   document.querySelectorAll('.video-card').forEach(c=>c.classList.remove('selected'));
   card.classList.add('selected');
- // 1) 전체 뮤트
- const selectedIdx = Number(card.dataset.idx);
-  players.forEach((p,i)=>{ if(p?.mute){ p.mute();
- setInteractable(i, i === selectedIdx);  // ← 여기!
-  updateAudioUI(i); } });
+  const selectedIdx = Number(card.dataset.idx);
+
+  // 재생은 계속, 소리만 끔 / 선택만 조작 허용
+  players.forEach((p,i)=>{ if(p?.mute) p.mute(); setInteractable(i, i===selectedIdx); updateAudioUI(i); });
+
+  if(currentLayout==='focus'){
+    const grid  = document.getElementById('videoGrid');
+    ensureFocusPanes();
+    const main  = grid.querySelector('.focus-main');
+    const side  = grid.querySelector('.focus-side');
+    const curMain = main.querySelector('.video-card');
+
+    if(curMain !== card){
+      if(curMain) side.prepend(curMain);      // 기존 포커스는 사이드 상단
+      if(card.parentNode !== main) main.appendChild(card);
+    }
+    attachScrollSync(side);
+  }
+
+  // 선택된 것만 언뮤트
   const sel = players[selectedIdx];
-  if (sel?.unMute) { sel.unMute(); updateAudioUI(selectedIdx, true); }
+  if(sel?.unMute){ sel.unMute(); updateAudioUI(selectedIdx, true); }
+
+  requestSync(); // 전환 후 좌표 재동기화
 }
 
-
-// 1) iframe 상호작용 토글
-function setInteractable(idx, enabled){
-  const iframe = players[idx]?.getIframe?.();
-  if (iframe) iframe.style.pointerEvents = enabled ? 'auto' : 'none';
-}
-
-/* onReady: 진행바/아이콘 상태 주기 갱신 */
+/* ===== YT 콜백/컨트롤 ===== */
 function onPlayerReady(e){
   const p = e.target;
   const idx = players.indexOf(p);
-  // 초기상태: 음소거
-  p.mute();
-   setInteractable(idx, false);   // ← 선택 전엔 조작 비활성
+  try{ p.mute(); p.playVideo(); }catch(_){}   // 모두 음소거 자동재생 (타임 유지)
+  setInteractable(idx, false);
   updateAudioUI(idx);
+
+  // UI 갱신 루프
   setInterval(()=>{
-    const dur = (typeof p.getDuration==='function') ? p.getDuration() : 0;
-    const cur = (typeof p.getCurrentTime==='function') ? p.getCurrentTime() : 0;
+    const dur = p.getDuration ? p.getDuration() : 0;
+    const cur = p.getCurrentTime ? p.getCurrentTime() : 0;
     const seek = document.getElementById(`seek${idx}`);
     if(seek && dur){ seek.max = dur; seek.value = cur; }
     updatePlayUI(idx);
-    updateAudioUI(idx); // 내장 UI 조작 반영
+    updateAudioUI(idx);
   }, 500);
+
+  requestSync(); // 초기 좌표
 }
-// 4) 보조: 버튼으로 조작할 때 자동으로 선택되게(선택 편의성↑)
+function onPlayerStateChange(e){
+  // 필요 시 상태 기반 처리(현재는 좌표/복원 불필요)
+}
+
 function ensureSelected(idx){
   const card = document.querySelector(`.video-card[data-idx="${idx}"]`);
-  if (card && !card.classList.contains('selected')) selectCard(card);
+  if(card && !card.classList.contains('selected')) selectCard(card);
 }
-/* ----- 컨트롤 로직 ----- */
 function togglePlay(idx){
-	ensureSelected(idx);
+  ensureSelected(idx);
   const p = players[idx]; if(!p) return;
-  const state = p.getPlayerState?.();
-  // 1(playing) → pause, 그 외 → play
-  if(state === 1) p.pauseVideo(); else p.playVideo();
+  const st = p.getPlayerState?.();
+  (st===1 ? p.pauseVideo() : p.playVideo());
   updatePlayUI(idx);
 }
 function updatePlayUI(idx){
-  const p = players[idx]; const btn = document.getElementById(`playBtn${idx}`);
+  const p = players[idx], btn = document.getElementById(`playBtn${idx}`);
   if(!p||!btn||!p.getPlayerState) return;
-  const playing = p.getPlayerState() === 1;
-  btn.textContent = playing ? '⏸ 일시정지' : '▶ PLAY';
+  btn.textContent = (p.getPlayerState()===1) ? '⏸ 일시정지' : '▶ PLAY';
 }
-
 function toggleMute(idx){
-ensureSelected(idx);
+  ensureSelected(idx);
   const p = players[idx]; if(!p) return;
-  if(p.isMuted()) p.unMute(); else p.mute();
-  updateAudioUI(idx, true); // 상태 전환 시 팝오버 표시/숨김
+  (p.isMuted() ? p.unMute() : p.mute());
+  updateAudioUI(idx, true);
 }
-function setVolume(idx, val){
-ensureSelected(idx);
+function setVolume(idx, v){
   const p = players[idx]; if(!p) return;
-  p.setVolume(Number(val));
+  p.setVolume(Number(v));
   if(p.getVolume()===0 && !p.isMuted()) p.mute();
   if(p.getVolume()>0 && p.isMuted()) p.unMute();
   updateAudioUI(idx);
@@ -204,33 +524,22 @@ function updateAudioUI(idx, fromToggle=false){
   const pop = document.getElementById(`volPop${idx}`);
   const vr  = document.getElementById(`volRange${idx}`);
   if(!p||!btn||!pop||!vr||!p.getVolume) return;
-
   const audible = !p.isMuted() && p.getVolume()>0;
   btn.textContent = audible ? '🔊' : '🔇';
   btn.title = audible ? '음소거' : '음소거 해제';
-
-  // 스피커 상태일 때 팝오버 표시, 아니라면 숨김
-  if(audible){
-    if(fromToggle) pop.classList.add('show');   // 토글로 스피커 전환 시 표시
-    vr.value = p.getVolume();
-  }else{
-    pop.classList.remove('show');
-  }
+  if(audible){ if(fromToggle) pop.classList.add('show'); vr.value=p.getVolume(); }
+  else pop.classList.remove('show');
 }
-
-/* 탐색 */
 function seekVideo(idx, v){
-ensureSelected(idx);
+  ensureSelected(idx);
   const p = players[idx]; if(!p) return;
   p.seekTo(Number(v), true);
 }
 
-/* 전역 클릭 시 팝오버 닫기 (스피커 상태 유지) */
-document.addEventListener('click', (e)=>{
+/* ===== 스크롤/리사이즈 외부영역 클릭 ===== */
+document.addEventListener('click',(e)=>{
   document.querySelectorAll('.vol-pop').forEach(el=>{
-    if(!el.contains(e.target) && !el.previousElementSibling.contains(e.target)){
-      el.classList.remove('show');
-    }
+    if(!el.contains(e.target) && !el.previousElementSibling.contains(e.target)) el.classList.remove('show');
   });
 });
 </script>
