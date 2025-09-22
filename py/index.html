@@ -2,127 +2,159 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>PyScript · 로컬 .py 실행(진단 강화 · 최소 수정)</title>
+<title>PyScript · 로컬/레포 실행 통합</title>
 
-<!-- CSS는 pyscript.css가 맞습니다 -->
 <link rel="stylesheet" href="https://pyscript.net/releases/2025.8.1/pyscript.css"/>
 <script type="module" src="https://pyscript.net/releases/2025.8.1/core.js"></script>
 
 <py-config>{ "packages": [] }</py-config>
 <style>
   body{margin:0;background:#0b1220;color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-  .wrap{max-width:980px;margin:40px auto;padding:0 16px}
+  .wrap{max-width:1100px;margin:40px auto;padding:0 16px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   .card{background:#121a2a;border:1px solid #223;padding:18px;border-radius:14px}
   button{padding:10px 14px;border-radius:10px;border:1px solid #334;background:#1a2236;color:#e9eef6;cursor:pointer}
   input[type=file]{display:none}
   pre{white-space:pre-wrap;background:#0f1525;border:1px solid #334;border-radius:10px;padding:10px;margin-top:10px}
-  #out{min-height:96px} #log{min-height:56px;opacity:.85}
-  .ok{color:#9BE28A}.warn{color:#FFC66D}
+  #drop{border:2px dashed #334;border-radius:12px;min-height:120px;display:grid;place-items:center;background:#0f1525;margin-top:10px}
+  @media (max-width:880px){ .grid{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
-<div class="wrap"><div class="card">
-  <div id="env"></div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
-    <button py-click="open_picker">파일 열기 → 실행</button>
-    <button py-click="clear_all">모두 지우기</button>
+<div class="wrap">
+  <div class="grid">
+    <!-- A) 로컬 -->
+    <section class="card">
+      <h2>A) 로컬 .py 실행</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
+        <button py-click="open_picker">파일 열기</button>
+        <button py-click="clear_out('outA','logA')">지우기</button>
+      </div>
+      <input id="picker" type="file" accept=".py,.txt"/>
+      <div id="drop">여기로 .py 드롭</div>
+      <h3>출력</h3><pre id="outA"></pre>
+      <h3>로그</h3><pre id="logA"></pre>
+    </section>
+
+    <!-- B) 레포 -->
+    <section class="card">
+      <h2>B) 레포 파일 실행 (py/scripts/demo.py)</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
+        <button py-click="run_repo">실행</button>
+        <button py-click="clear_out('outB','logB')">지우기</button>
+      </div>
+      <h3>출력</h3><pre id="outB"></pre>
+      <h3>로그</h3><pre id="logB"></pre>
+    </section>
   </div>
-  <input id="picker" type="file" accept=".py,.txt"/>
-  <h3>출력</h3><pre id="out"></pre>
-  <h3>로그</h3><pre id="log"></pre>
-</div></div>
+</div>
 
 <script type="py">
 from pyscript import display, when
-from pyodide.ffi import create_proxy   # ⬅️ to_py 제거
-from js import document, window, TextDecoder, Uint8Array
+from pyodide.ffi import create_proxy
+from pyodide.http import pyfetch
+from js import document, TextDecoder, Uint8Array
 import sys, io, traceback, re
 
-def w(m): display(str(m), target="out", append=True)
-def lg(m): display(str(m), target="log", append=True)
+def w(t,m): display(str(m), target=t, append=True)
+def lg(t,m): display(str(m), target=t, append=True)
 
-# 환경 배너
-host = window.location.hostname or ""
-ok_env = (".github.io" in host) or (host == "localhost")
-document.getElementById("env").innerHTML = (
-  f'<b class="ok">✅ Pages/로컬 환경:</b> {host}' if ok_env
-  else f'<b class="warn">⚠️ Pages 아님:</b> {host} — github.io 주소로 여세요'
-)
-
-# 전역 에러 → 로그
-def _onerr(ev):
-    try:
-        msg = getattr(ev, "message", None) or "unknown"
-        lg(f"[window.onerror] {msg}\n")
-    except Exception: pass
-window.addEventListener("error", create_proxy(_onerr))
-
-# 숨은 문자 정규화
 UNSAFE = {"\u00A0":"NBSP","\u202F":"NARROW_NBSP","\u2007":"FIGURE_SPACE",
           "\u200B":"ZWSP","\u200C":"ZWNJ","\u200D":"ZWJ","\u2060":"WORD_JOINER","\uFEFF":"BOM"}
-_pattern = re.compile("[" + "".join(UNSAFE.keys()) + "]")
-def sanitize(src:str):
+_pat = re.compile("[" + "".join(UNSAFE.keys()) + "]")
+
+def sanitize(s):
     cnt={}
     def repl(m):
         ch=m.group(0); cnt[ch]=cnt.get(ch,0)+1
         return " " if ch in ("\u00A0","\u202F","\u2007") else ""
-    return _pattern.sub(repl, src), cnt
+    return _pat.sub(repl, s), cnt
 
 async def read_file_text(f):
-    """file.text() 우선, 실패 시 ArrayBuffer → JS TextDecoder('utf-8')"""
     try:
         return await f.text()
     except Exception as e_text:
-        lg(f"text() 실패 → arrayBuffer(): {e_text}\n")
+        lg("logA", f"text() 실패 → arrayBuffer(): {e_text}\n")
         ab = await f.arrayBuffer()
-        code = TextDecoder.new("utf-8").decode(Uint8Array.new(ab))
-        return code
+        return TextDecoder.new("utf-8").decode(Uint8Array.new(ab))
 
-def open_picker(e=None):
-    lg("open_picker\n"); document.getElementById("picker").click()
+def run_code(code, t_out):
+    buf=io.StringIO(); old=sys.stdout; sys.stdout=buf
+    ret=None
+    try:
+        ns={}; exec(code, ns, ns)
+        if "main" in ns and callable(ns["main"]): ret=ns["main"]()
+    finally:
+        sys.stdout=old
+    out=buf.getvalue()
+    if out: w(t_out, f"[print]\n{out}")
+    if ret is not None: w(t_out, f"[main()]\n{ret}\n")
+    if not out and ret is None: w(t_out, "[안내] 출력/반환 없음\n")
 
+def clear_out(t_out="outA", t_log="logA", e=None):
+    document.getElementById(t_out).innerText=""
+    document.getElementById(t_log).innerText=""
+
+# A) 로컬
+def open_picker(e=None): lg("logA","open_picker\n"); document.getElementById("picker").click()
 @when("change","#picker")
-async def on_change(e):
-    lg("change 수신\n")
-    files = e.target.files
-    await run_selected(files)
+async def on_change(e): lg("logA","change 수신\n"); await run_files(e.target.files)
 
-async def run_selected(files):
-    if not files or files.length==0:
-        lg("파일 없음/취소\n"); return
-    f = files[0]; lg(f"선택됨: {f.name} ({f.size} bytes)\n")
+async def run_files(files):
+    if not files or files.length==0: lg("logA","파일 없음/취소\n"); return
+    f = files[0]; lg("logA", f"선택됨: {f.name} ({f.size} bytes)\n")
     try:
         code = await read_file_text(f)
         code, cnt = sanitize(code)
-        if cnt: lg("[정규화] " + ", ".join(f"{UNSAFE[k]}×{v}" for k,v in cnt.items()) + "\n")
-
-        buf=io.StringIO(); old=sys.stdout; sys.stdout=buf
-        ret=None
-        try:
-            ns={}; exec(code, ns, ns)
-            if "main" in ns and callable(ns["main"]): ret=ns["main"]()
-        finally:
-            sys.stdout=old
-        out=buf.getvalue()
-        w(f"▶ {f.name}\n")
-        if out: w(f"[print]\n{out}")
-        if ret is not None: w(f"[main()]\n{ret}\n")
-        if not out and ret is None: w("[안내] 출력/반환 없음\n")
+        if cnt: lg("logA","[정규화] " + ", ".join(f"{UNSAFE[k]}×{v}" for k,v in cnt.items()) + "\n")
+        run_code(code, "outA")
     except Exception as e:
-        w("[에러]\n" + "".join(traceback.format_exception_only(type(e),e)))
+        w("outA", "[에러]\n" + "".join(traceback.format_exception_only(type(e),e)))
 
-def clear_all(e=None):
-    document.getElementById("out").innerText=""
-    document.getElementById("log").innerText=""
-
-# 이중 바인딩
+# 드롭
+drop = document.getElementById("drop")
+def prevent(ev): ev.preventDefault()
+for ev in ["dragenter","dragover","dragleave","drop"]:
+    drop.addEventListener(ev, create_proxy(prevent))
+@when("drop","#drop")
+async def on_drop(e):
+    lg("logA","drop 수신\n")
+    dt = e.dataTransfer
+    files = dt.files if dt else None
+    await run_files(files)
 try:
     document.getElementById("picker").addEventListener("change", create_proxy(on_change))
-    lg("수동 바인딩 완료\n")
+    lg("logA","수동 바인딩 완료\n")
 except Exception:
-    lg("수동 바인딩 실패(무시)\n")
+    pass
 
-lg("READY\n")
+# B) 레포 (상대경로 → RAW Fallback)
+USER="newfacesandnewfacess"; REPO="poly-data"; PATH="py/scripts/demo.py"
+def raw(ref): return f"https://raw.githubusercontent.com/{USER}/{REPO}/{ref}/{PATH}"
+
+async def run_repo(e=None):
+    t_out, t_log = "outB", "logB"
+    try:
+        try:
+            r = await pyfetch("./scripts/demo.py")
+            if r.status != 200: raise RuntimeError(f"HTTP {r.status}")
+            code = await r.text()
+        except Exception as e1:
+            lg(t_log, f"[안내] 로컬 실패 → RAW 재시도: {e1}\n")
+            code=None
+            for ref in ["HEAD","main","master"]:
+                rr = await pyfetch(raw(ref))
+                if rr.status == 200:
+                    code = await rr.text(); lg(t_log, f"[안내] RAW({ref}) 성공\n"); break
+                else:
+                    lg(t_log, f"  - RAW({ref}) HTTP {rr.status}\n")
+            if code is None:
+                w(t_out, "[에러] RAW(HEAD/main/master) 모두 실패\n"); return
+        code, cnt = sanitize(code)
+        if cnt: lg(t_log,"[정규화] " + ", ".join(f"{UNSAFE[k]}×{v}" for k,v in cnt.items()) + "\n")
+        run_code(code, t_out)
+    except Exception as e:
+        w(t_out, "[에러]\n" + "".join(traceback.format_exception_only(type(e),e)))
 </script>
 </body>
 </html>
