@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>PDF → 이미지 추출 (범위/정보 표시)</title>
+<title>PDF → 이미지 추출 (범위/정보 표시 · JsProxy 대응)</title>
 
 <link rel="stylesheet" href="https://pyscript.net/releases/2025.8.1/pyscript.css"/>
 <script type="module" src="https://pyscript.net/releases/2025.8.1/core.js"></script>
@@ -57,7 +57,7 @@
 <script type="py">
 from pyscript import display, when
 from js import document, fetch, Uint8Array
-import io, base64, zipfile, traceback
+import io, base64, zipfile, traceback, re
 
 USER="newfacesandnewfacess"; REPO="poly-data"
 
@@ -73,15 +73,33 @@ def clear_b(e=None):
     set_html("galB",""); document.getElementById("zipB").style.display="none"
     document.getElementById("logB").innerText=""
 
+# ── 핵심: 어떤 형태의 바이너리(JS TypedArray/ArrayBuffer/bytes 등)라도 Python bytes로 강제 변환
+def to_py_bytes(obj):
+    try:
+        if isinstance(obj, (bytes, bytearray, memoryview)):
+            return bytes(obj)
+    except Exception:
+        pass
+    # JsProxy(예: Uint8Array, ArrayBuffer) → Uint8Array.new(...) → bytes(...)
+    try:
+        return bytes(Uint8Array.new(obj))
+    except Exception:
+        pass
+    # 최후: bytes() 시도
+    try:
+        return bytes(obj)
+    except Exception as e:
+        raise TypeError(f"Unsupported binary type for conversion: {type(obj)} ({e})")
+
 async def ensure_bytes_from_file(f):
     ab = await f.arrayBuffer()
-    return bytes(Uint8Array.new(ab))
+    return to_py_bytes(ab)
 
 async def ensure_bytes_from_url(url):
     r = await fetch(url)
     if not r.ok: raise RuntimeError(f"HTTP {r.status}")
     ab = await r.arrayBuffer()
-    return bytes(Uint8Array.new(ab))
+    return to_py_bytes(ab)
 
 def parse_range(s, total):
     s=(s or "").strip()
@@ -110,17 +128,18 @@ def images_from_pdf(pdf_bytes: bytes, wanted=None):
         imgs = getattr(page,"images",None)
         if not imgs: continue
         for idx, im in enumerate(imgs, start=1):
-            ext=(im.extension or "bin").lower()
+            ext=(getattr(im,"extension",None) or "bin").lower()
             mime={"jpg":"jpeg","jpeg":"jpeg","jp2":"jp2","png":"png","tiff":"tiff"}.get(ext,"octet-stream")
+            data = to_py_bytes(getattr(im,"data",b""))   # ⬅️ 여기서 항상 Python bytes로 통일
             fname=f"p{pno:03d}_{idx:02d}.{ext}"
-            images.append((fname,f"image/{mime}",im.data,len(im.data)))
+            images.append((fname,f"image/{mime}",data,len(data)))
     return images, total
 
 def set_zip_link(link_id, images):
     bio=io.BytesIO()
     with zipfile.ZipFile(bio,"w",zipfile.ZIP_DEFLATED) as z:
         for fname,_,data,_ in images:
-            z.writestr(fname,data)
+            z.writestr(fname,data)            # data는 이미 Python bytes
     b64=base64.b64encode(bio.getvalue()).decode("ascii")
     a=document.getElementById(link_id)
     a.href="data:application/zip;base64,"+b64
@@ -133,12 +152,9 @@ async def on_local(e):
         if not files or files.length==0: lg("logA","취소\n"); return
         f=files[0]; lg("logA",f"{f.name} 읽는 중...\n")
         pdf_bytes=await ensure_bytes_from_file(f)
-        pages_total=None
-        wanted=None
-        # 범위 파싱
         from pypdf import PdfReader
-        pages_total = len(PdfReader(io.BytesIO(pdf_bytes)).pages)
-        wanted=parse_range(document.getElementById("rngA").value, pages_total)
+        total=len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+        wanted=parse_range(document.getElementById("rngA").value, total)
         images,_=images_from_pdf(pdf_bytes,wanted)
         if not images: lg("logA","이미지 없음\n"); return
         set_html("galA","")
@@ -146,7 +162,7 @@ async def on_local(e):
             b64=base64.b64encode(data).decode("ascii")
             append_html("galA",f'<figure><img alt="{fname}" src="data:{mime};base64,{b64}"><figcaption style="opacity:.85">{fname} · {n} bytes</figcaption></figure>')
         set_zip_link("zipA",images)
-        lg("logA",f"총 {len(images)}개 추출 (총 {pages_total}p 중 {len(wanted)}p 처리)\n")
+        lg("logA",f"총 {len(images)}개 추출 (총 {total}p 중 {len(wanted)}p 처리)\n")
     except Exception as ex:
         lg("logA","[에러]\n"+ "".join(traceback.format_exception_only(type(ex),ex)))
 
@@ -168,7 +184,7 @@ async def run_repo(_=None):
         if pdf_bytes is None: lg("logB","[에러] 모든 경로 실패\n"); return
 
         from pypdf import PdfReader
-        total = len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+        total=len(PdfReader(io.BytesIO(pdf_bytes)).pages)
         wanted=parse_range(document.getElementById("rngB").value, total)
         images,_=images_from_pdf(pdf_bytes,wanted)
         if not images: lg("logB","이미지 없음\n"); return
