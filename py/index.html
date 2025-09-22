@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PyScript · Repo 파일 실행</title>
+
+  <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
+  <script defer src="https://pyscript.net/latest/pyscript.js"></script>
+
+  <style>
+    body{margin:0;background:#0b1220;color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    .wrap{max-width:960px;margin:48px auto;padding:0 16px}
+    .card{background:#121a2a;border:1px solid #223;padding:18px;border-radius:14px}
+    button{padding:10px 14px;border-radius:10px;border:1px solid #334;background:#1a2236;color:#e9eef6;cursor:pointer}
+    #out{white-space:pre-wrap;background:#0f1525;border:1px solid #334;border-radius:10px;padding:10px;min-height:80px}
+    code{background:#0f1525;padding:2px 6px;border-radius:6px}
+  </style>
+
+  <py-config>
+packages = []   # 필요 시 ["micropip", "pandas"]처럼 추가(용량/로딩시간 주의)
+  </py-config>
+</head>
+<body>
+  <div class="wrap">
+    <h1>레포의 Python 파일을 브라우저에서 실행 (PyScript)</h1>
+
+    <div class="card" style="margin-bottom:12px">
+      <p>버튼을 클릭하면 <code>scripts/demo.py</code>를 불러와 <code>main()</code>을 실행합니다.</p>
+      <button py-click="run_from_repo()">demo.py 실행</button>
+      <button py-click="clear_out()">출력 지우기</button>
+    </div>
+
+    <div class="card">
+      <h3>출력</h3>
+      <div id="out"></div>
+    </div>
+  </div>
+
+  <py-script>
+from pyscript import Element
+from pyodide.http import pyfetch
+
+async def run_from_repo():
+    out = Element("out")
+    out.write("[불러오는 중] scripts/demo.py ...\n")
+    try:
+        resp = await pyfetch("scripts/demo.py")   # 같은 레포(동일 출처)라 CORS 문제 없음
+        code = await resp.text()
+        ns = {}
+        exec(code, ns, ns)
+        if "main" in ns and callable(ns["main"]):
+            result = ns["main"]()
+            out.write(str(result) + "\n")
+        else:
+            out.write("[안내] demo.py에 main() 함수가 없습니다.\n")
+    except Exception as e:
+        out.write(f"[에러] {e}\n")
+
+def clear_out():
+    Element("out").clear()
+  </py-script>
+</body>
+</html>
