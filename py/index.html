@@ -2,75 +2,95 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>PDF → 이미지 추출 (범위/정보 표시 · JsProxy 안전)</title>
-
+<title>PDF → 텍스트+이미지 (깊은 스캔·Flate 제한 지원)</title>
 <link rel="stylesheet" href="https://pyscript.net/releases/2025.8.1/pyscript.css"/>
 <script type="module" src="https://pyscript.net/releases/2025.8.1/core.js"></script>
 <py-config>{ "packages": ["pypdf"] }</py-config>
-
 <style>
   body{margin:0;background:#0b1220;color:#e9eef6;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-  .wrap{max-width:1120px;margin:40px auto;padding:0 16px}
+  .wrap{max-width:1200px;margin:38px auto;padding:0 16px}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   .card{background:#121a2a;border:1px solid #223;padding:18px;border-radius:14px}
   .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   button{padding:10px 14px;border-radius:10px;border:1px solid #334;background:#1a2236;color:#e9eef6;cursor:pointer}
   input[type=file]{display:none}
   input[type=text]{background:#0f1525;border:1px solid #334;border-radius:10px;color:#e9eef6;padding:8px 10px}
+  .opt{display:flex;gap:12px;align-items:center}
   .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:10px}
   .gal img{max-width:100%;border-radius:10px;border:1px solid #334;background:#0f1525}
   pre{white-space:pre-wrap;background:#0f1525;border:1px solid #334;border-radius:10px;padding:10px;margin-top:10px}
-  @media (max-width:900px){ .grid{grid-template-columns:1fr} }
+  table{width:100%;border-collapse:collapse;font-size:.95rem;margin-top:.6rem}
+  th,td{border-bottom:1px dashed #2a3654;padding:.4rem .5rem} th{background:#0f1525}
+  .txt{background:#0f1525;border:1px solid #334;border-radius:10px;padding:8px;margin-top:10px}
+  @media (max-width:900px){.grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="grid">
     <section class="card">
-      <h2>A) 로컬 PDF → 이미지</h2>
+      <h2>A) 로컬</h2>
       <div class="row">
         <button py-click="pick_pdf">PDF 선택</button>
-        <label>페이지(예: 1-3,5): <input id="rngA" type="text" placeholder="비우면 전체"/></label>
+        <label>페이지: <input id="rngA" type="text" placeholder="예: 1-3,5"/></label>
+        <div class="opt">
+          <label><input id="deepA" type="checkbox" checked/> 깊은 스캔</label>
+          <label><input id="txtA" type="checkbox"/> 텍스트</label>
+          <label><input id="flateA" type="checkbox"/> Flate→PNG(제한)</label>
+        </div>
         <button py-click="clear_a">지우기</button>
-        <a id="zipA" style="display:none" download="images_local.zip">ZIP 다운로드</a>
+        <a id="zipA" style="display:none" download="images_local.zip">ZIP</a>
+        <a id="txtDL_A" style="display:none" download="text_local.txt">텍스트</a>
       </div>
       <input id="pdfA" type="file" accept="application/pdf"/>
       <div id="galA" class="gal"></div>
+      <div id="textA" class="txt"></div>
       <h3>로그</h3><pre id="logA"></pre>
+      <div id="repA"></div>
     </section>
 
     <section class="card">
-      <h2>B) 레포 PDF → 이미지</h2>
+      <h2>B) 레포</h2>
       <div class="row">
         <input id="path" type="text" placeholder="예: py/assets/sample.pdf" style="flex:1"/>
-        <label>페이지: <input id="rngB" type="text" placeholder="비우면 전체"/></label>
+        <label>페이지: <input id="rngB" type="text" placeholder="예: 2-5"/></label>
+        <div class="opt">
+          <label><input id="deepB" type="checkbox" checked/> 깊은 스캔</label>
+          <label><input id="txtB" type="checkbox"/> 텍스트</label>
+          <label><input id="flateB" type="checkbox"/> Flate→PNG(제한)</label>
+        </div>
         <button py-click="run_repo">가져와 추출</button>
         <button py-click="clear_b">지우기</button>
-        <a id="zipB" style="display:none" download="images_repo.zip">ZIP 다운로드</a>
+        <a id="zipB" style="display:none" download="images_repo.zip">ZIP</a>
+        <a id="txtDL_B" style="display:none" download="text_repo.txt">텍스트</a>
       </div>
       <div id="galB" class="gal"></div>
+      <div id="textB" class="txt"></div>
       <h3>로그</h3><pre id="logB"></pre>
+      <div id="repB"></div>
     </section>
   </div>
+  <p style="opacity:.85">※ JP2 미리보기 미지원 브라우저가 있습니다. ZIP에는 포함됩니다. Flate→PNG는 <b>DeviceGray/DeviceRGB, 8bpc, Predictor 없음/1</b>일 때만 시도합니다.</p>
 </div>
 
 <script type="py">
 from pyscript import display, when
 from js import document, fetch, Uint8Array
-import io, base64, zipfile, traceback
+import io, base64, zipfile, traceback, zlib, asyncio
 
 USER="newfacesandnewfacess"; REPO="poly-data"
 
 def lg(t,m): display(str(m), target=t, append=True)
 def set_html(id_, html): document.getElementById(id_).innerHTML = html
 def append_html(id_, html): document.getElementById(id_).insertAdjacentHTML("beforeend", html)
-
 def pick_pdf(e=None): document.getElementById("pdfA").click()
 def clear_a(e=None):
-    set_html("galA",""); document.getElementById("zipA").style.display="none"
+    for i in ("galA","textA","repA"): set_html(i,"")
+    for i in ("zipA","txtDL_A"): document.getElementById(i).style.display="none"
     document.getElementById("logA").innerText=""
 def clear_b(e=None):
-    set_html("galB",""); document.getElementById("zipB").style.display="none"
+    for i in ("galB","textB","repB"): set_html(i,"")
+    for i in ("zipB","txtDL_B"): document.getElementById(i).style.display="none"
     document.getElementById("logB").innerText=""
 
 def to_bytes(obj):
@@ -104,67 +124,149 @@ def parse_range(s, total):
             if 1<=k<=total: out.add(k)
     return out
 
-def name_str(x):
-    s=str(x)
-    return s[1:] if s.startswith("/") else s
+def name_str(x): s=str(x); return s[1:] if s.startswith("/") else s
+def _filter_names(flt):
+    if flt is None: return []
+    if hasattr(flt, "__iter__") and not isinstance(flt,(bytes,bytearray)): 
+        return [name_str(f) for f in list(flt)]
+    return [name_str(flt)]
 
-def extract_images_jpeg_only(pdf_bytes: bytes, wanted=None):
+# ── 제한적 Flate→PNG ──
+def _png_chunk(tag, data): return (len(data).to_bytes(4,"big") + tag + data + zlib.crc32(tag+data).to_bytes(4,"big"))
+def flate_to_png_bytes(raw, w, h, colorspace, bpc, predictor=None):
+    if bpc != 8: raise ValueError("only 8bpc")
+    if colorspace not in ("/DeviceRGB","/DeviceGray"): raise ValueError("only DeviceRGB/Gray")
+    channels = 3 if colorspace=="/DeviceRGB" else 1
+    expected = w*h*channels
+    if len(raw) != expected: raise ValueError("unexpected length")
+    rows = []
+    rowlen = w*channels
+    for y in range(h):
+        start=y*rowlen; rows.append(b"\x00"+ raw[start:start+rowlen])
+    data = zlib.compress(b"".join(rows))
+    ihdr = (w.to_bytes(4,"big")+ h.to_bytes(4,"big")+ bpc.to_bytes(1,"big")
+            + (b"\x02" if channels==3 else b"\x00") + b"\x00\x00\x00")
+    return (b"\x89PNG\r\n\x1a\n" + _png_chunk(b"IHDR", ihdr) + _png_chunk(b"IDAT", data) + _png_chunk(b"IEND", b""))
+
+# ── 이미지 추출(깊은 스캔 + JPEG/JP2 + 제한적 Flate) ──
+def extract_images(pdf_bytes: bytes, wanted=None, deep=True, allow_flate=False):
     from pypdf import PdfReader
     reader = PdfReader(io.BytesIO(pdf_bytes))
     total=len(reader.pages); wanted = wanted or set(range(1,total+1))
-    out=[]; skipped=0; unsupported=0
+    out=[]; report=[]
+    def walk_xobj(xref_like, pno):
+        try: xobjs = xref_like.get_object()
+        except Exception: xobjs = xref_like
+        for key, ref in getattr(xobjs, "items", lambda: [])():
+            try: obj = ref.get_object()
+            except Exception: 
+                continue
+            st = obj.get("/Subtype")
+            if st == "/Image":
+                flt = _filter_names(obj.get("/Filter"))
+                data=None; ext=None; mime=None
+                if "DCTDecode" in flt: ext,mime="jpg","image/jpeg"; data = to_bytes(obj.get_data())
+                elif "JPXDecode" in flt: ext,mime="jp2","image/jp2"; data = to_bytes(obj.get_data())
+                elif allow_flate and "FlateDecode" in flt:
+                    try:
+                        w=int(obj.get("/Width")); h=int(obj.get("/Height"))
+                        cs=str(obj.get("/ColorSpace")); bpc=int(obj.get("/BitsPerComponent") or 8)
+                        raw = to_bytes(obj.get_data())
+                        data = flate_to_png_bytes(raw,w,h,cs,bpc)
+                        ext, mime = "png", "image/png"
+                    except Exception as e:
+                        report.append({
+                            "page": pno,
+                            "key": name_str(key),
+                            "filters": "+".join(flt) if flt else "none",
+                            "note": f"Flate→PNG 실패: {e}",
+                        })
+                if data is not None:
+                    out.append((f"p{pno:03d}_{name_str(key)}.{ext}", mime, data, len(data)))
+                else:
+                    if not ("DCTDecode" in flt or "JPXDecode" in flt or ("FlateDecode" in flt and allow_flate)):
+                        report.append({"page": pno, "key": name_str(key), "filters": "+".join(flt) if flt else "none"})
+            elif deep and st == "/Form":
+                res = obj.get("/Resources") or {}; xo = res.get("/XObject")
+                if xo: walk_xobj(xo, pno)
     for pno, page in enumerate(reader.pages, start=1):
         if pno not in wanted: continue
-        res = page.get("/Resources") or {}
-        xref = res.get("/XObject")
-        if not xref: continue
-        xobjs = xref.get_object()
-        for key, ref in xobjs.items():
-            xobj = ref.get_object()
-            if xobj.get("/Subtype") != "/Image": continue
-            flt = xobj.get("/Filter")
-            if flt is None: 
-                unsupported += 1; continue
-            flts = list(flt) if hasattr(flt,"__iter__") and not isinstance(flt,(bytes,bytearray)) else [flt]
-            names = [name_str(f) for f in flts]
-            if "DCTDecode" in names: ext, mime = "jpg","image/jpeg"
-            elif "JPXDecode" in names: ext, mime = "jp2","image/jp2"
-            else:
-                unsupported += 1; continue
-            data = to_bytes(xobj.get_data())
-            out.append((f"p{pno:03d}_{name_str(key)}.{ext}", mime, data, len(data)))
-    return out, total, skipped, unsupported
+        res = page.get("/Resources") or {}; xo = res.get("/XObject")
+        if xo: walk_xobj(xo, pno)
+    return out, total, report
+
+def extract_text(pdf_bytes: bytes, wanted=None):
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    total=len(reader.pages); wanted = wanted or set(range(1,total+1))
+    items=[]
+    for pno,page in enumerate(reader.pages,1):
+        if pno not in wanted: continue
+        try: items.append((pno, page.extract_text() or ""))
+        except Exception: items.append((pno,""))
+    return items, total
 
 def set_zip(link_id, images):
     bio=io.BytesIO()
     with zipfile.ZipFile(bio,"w",zipfile.ZIP_DEFLATED) as z:
         for fname,_,data,_ in images: z.writestr(fname,data)
-    b64=base64.b64encode(bio.getvalue()).decode("ascii")
     a=document.getElementById(link_id)
-    a.href="data:application/zip;base64,"+b64
+    a.href="data:application/zip;base64,"+base64.b64encode(bio.getvalue()).decode("ascii")
     a.style.display="inline-block"
+
+def set_text_download(link_id, items):
+    buf=[]
+    for pno,txt in items: buf.append(f"[Page {pno}]\n{txt}\n")
+    a=document.getElementById(link_id)
+    a.href="data:text/plain;charset=utf-8;base64,"+base64.b64encode("\n".join(buf).encode("utf-8")).decode("ascii")
+    a.style.display="inline-block"
+
+def render_report(where, report):
+    if not report: 
+        set_html(where, "<p style='opacity:.8'>미지원/실패 없음</p>"); return
+    rows=["<table><thead><tr><th style='width:80px'>페이지</th><th>키</th><th>필터</th><th>메모</th></tr></thead><tbody>"]
+    for r in report:
+        rows.append(f"<tr><td>{r['page']}</td><td>{r['key']}</td><td>{r['filters']}</td><td>{r.get('note','')}</td></tr>")
+    rows.append("</tbody></table>")
+    set_html(where,"".join(rows))
+
+async def run_bytes(pdf_bytes, rng_id, gal_id, log_id, rep_id, zip_id, want_text=False, txt_link_id=None, deep=True, allow_flate=False):
+    from pypdf import PdfReader
+    total=len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+    wanted=parse_range(document.getElementById(rng_id).value, total)
+    lg(log_id, f"처리 시작: 총 {total}p, 대상 {len(wanted)}p\n")
+    images,_,report = extract_images(pdf_bytes, wanted, deep=deep, allow_flate=allow_flate)
+    set_html(gal_id,"")
+    for i,(fname,mime,data,n) in enumerate(images,1):
+        b64=base64.b64encode(data).decode("ascii")
+        append_html(gal_id,f'<figure><img alt="{fname}" src="data:{mime};base64,{b64}"><figcaption style="opacity:.85">{i:02d}. {fname} · {n} bytes</figcaption></figure>')
+        if i%8==0: await asyncio.sleep(0)
+    if images: set_zip(zip_id, images)
+    render_report(rep_id, report)
+    lg(log_id, f"이미지: {len(images)}개 · 리포트 {len(report)}건\n")
+    if want_text:
+        items,_=extract_text(pdf_bytes, wanted)
+        set_html("textA" if txt_link_id=="txtDL_A" else "textB","")
+        for pno,txt in items:
+            preview=(txt or "")[:1000].replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+            append_html("textA" if txt_link_id=="txtDL_A" else "textB", f"<details><summary>Page {pno} 텍스트</summary><pre>{preview}</pre></details>")
+        if items: set_text_download(txt_link_id, items)
+        lg(log_id, f"텍스트: {len(items)}p\n")
 
 @when("change","#pdfA")
 async def on_local(e):
     try:
         files=e.target.files
-        # ✅ FileList는 JsProxy라 인덱싱 금지 → item(0) 사용
         if not files or int(getattr(files, "length", 0)) == 0:
             lg("logA","취소\n"); return
-        f = files.item(0)  # ✅ 핵심 수정
+        f = files.item(0)
         lg("logA",f"{f.name} 읽는 중...\n")
         pdf_bytes=await bytes_from_file(f)
-        from pypdf import PdfReader
-        total=len(PdfReader(io.BytesIO(pdf_bytes)).pages)
-        wanted=parse_range(document.getElementById("rngA").value, total)
-        images,total,skipped,unsupported=extract_images_jpeg_only(pdf_bytes,wanted)
-        if not images: lg("logA",f"이미지 없음 (미지원:{unsupported})\n"); return
-        set_html("galA","")
-        for fname,mime,data,n in images:
-            b64=base64.b64encode(data).decode("ascii")
-            append_html("galA",f'<figure><img alt="{fname}" src="data:{mime};base64,{b64}"><figcaption style="opacity:.85">{fname} · {n} bytes</figcaption></figure>')
-        set_zip("zipA",images)
-        lg("logA",f"총 {len(images)}개 추출\n")
+        await run_bytes(pdf_bytes, "rngA", "galA", "logA", "repA", "zipA",
+                        want_text=bool(document.getElementById("txtA").checked),
+                        txt_link_id="txtDL_A",
+                        deep=bool(document.getElementById("deepA").checked),
+                        allow_flate=bool(document.getElementById("flateA").checked))
     except Exception as ex:
         lg("logA","[에러]\n"+ "".join(traceback.format_exception_only(type(ex),ex)))
 
@@ -183,53 +285,13 @@ async def run_repo(_=None):
             except Exception as e1:
                 lg("logB",f"  - 실패: {u} ({e1})\n")
         if pdf_bytes is None: lg("logB","[에러] 모든 경로 실패\n"); return
-        from pypdf import PdfReader
-        total=len(PdfReader(io.BytesIO(pdf_bytes)).pages)
-        wanted=parse_range(document.getElementById("rngB").value, total)
-        images,total,skipped,unsupported=extract_images_jpeg_only(pdf_bytes,wanted)
-        if not images: lg("logB",f"이미지 없음 (미지원:{unsupported})\n"); return
-        set_html("galB","")
-        for fname,mime,d,n in images:
-            b64=base64.b64encode(d).decode("ascii")
-            append_html("galB",f'<figure><img alt="{fname}" src="data:{mime};base64,{b64}"><figcaption style="opacity:.85">{fname} · {n} bytes</figcaption></figure>')
-        set_zip("zipB",images)
-        lg("logB",f"총 {len(images)}개 추출\n")
+        await run_bytes(pdf_bytes, "rngB", "galB", "logB", "repB", "zipB",
+                        want_text=bool(document.getElementById("txtB").checked),
+                        txt_link_id="txtDL_B",
+                        deep=bool(document.getElementById("deepB").checked),
+                        allow_flate=bool(document.getElementById("flateB").checked))
     except Exception as ex:
         lg("logB","[에러]\n"+ "".join(traceback.format_exception_only(type(ex),ex)))
-        
-def extract_images_jpeg_only_verbose(pdf_bytes: bytes, wanted=None):
-    from pypdf import PdfReader
-    reader = PdfReader(io.BytesIO(pdf_bytes))
-    total=len(reader.pages); wanted = wanted or set(range(1,total+1))
-    out=[]; skipped=[]; unsupported=[]
-    def filt_names(flt):
-        if flt is None: return []
-        seq = list(flt) if hasattr(flt,"__iter__") and not isinstance(flt,(bytes,bytearray)) else [flt]
-        return [name_str(x) for x in seq]
-    for pno, page in enumerate(reader.pages, start=1):
-        if pno not in wanted: continue
-        res = page.get("/Resources") or {}; xref = res.get("/XObject")
-        if not xref: continue
-        for key, ref in xref.get_object().items():
-            xobj = ref.get_object()
-            if xobj.get("/Subtype") != "/Image": continue
-            fltn = filt_names(xobj.get("/Filter"))
-            if "DCTDecode" in fltn: ext, mime = "jpg","image/jpeg"
-            elif "JPXDecode" in fltn: ext, mime = "jp2","image/jp2"
-            else:
-                unsupported.append((pno, name_str(key), "+".join(fltn) or "none")); continue
-            try:
-                data = to_bytes(xobj.get_data())
-                out.append((f"p{pno:03d}_{name_str(key)}.{ext}", mime, data, len(data)))
-            except Exception as e:
-                skipped.append((pno, name_str(key), str(e)))
-    return out, total, skipped, unsupported
-
-# 사용부에서 extract_images_jpeg_only → extract_images_jpeg_only_verbose 로 바꾸고,
-# 로그에 unsupported/skipped 내역을 표로 찍어줍니다.        
 </script>
-<p class="hint" style="opacity:.85;margin-top:8px">
-  ※ 일부 브라우저는 <code>JP2</code>(JPEG2000) 미리보기를 지원하지 않습니다. 화면에 안 보이더라도 ZIP에는 포함됩니다.
-</p>
 </body>
 </html>
