@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>모바일 전광판 · 통합 완전본</title>
+<style>
+  :root{
+    --bg:#000; --fg:#fff; --card:#111; --line:#222;
+    --btn:#1a1a1a; --btnb:#333;
+    --fs:64px; --fw:800; --track:0px; --tc:#ff4040;
+    --strokeColor:#000000; --strokeWidth:2;
+    --boxColor:#ffffff; --boxWidth:2; --boxRadius:18;
+    --ctl-h:48px;
+    --dot:6px; /* LED 도트 크기 */
+  }
+  html,body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,Arial,Apple SD Gothic Neo}
+
+  #stage{min-height:72dvh;display:grid;place-items:center;position:relative;overflow:hidden;padding:8px}
+  #fxLayer{position:absolute;inset:0;pointer-events:none;z-index:0}
+  #text{
+    position:relative; z-index:1;
+    font-size:var(--fs); font-weight:var(--fw); letter-spacing:var(--track);
+    color:var(--tc); white-space:nowrap; line-height:1.1; text-align:center;
+    padding:10px 16px; border-radius:var(--boxRadius);
+  }
+  .boxed{
+    border: var(--boxWidth) solid var(--boxColor);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--boxColor) 50%, transparent);
+  }
+
+  /* LED 보드 배경 + 상하 흰 도트 라인 */
+  .stage-led{
+    background:
+      radial-gradient(circle,#2a2a2a 32%,transparent 33%) 0 0/var(--dot) var(--dot) repeat,#000;
+  }
+  #stage.stage-led::before,#stage.stage-led::after{
+    content:""; position:absolute; left:0; right:0; height:calc(var(--dot)*2);
+    background: radial-gradient(circle,#fff 45%,transparent 46%) 0 0/var(--dot) var(--dot) repeat;
+    pointer-events:none;
+  }
+  #stage.stage-led::before{ top: calc(var(--dot)*.5); }
+  #stage.stage-led::after{  bottom: calc(var(--dot)*.5); }
+
+  /* LED 텍스트(도트 마스크) */
+  .led{
+    color:transparent;
+    background: linear-gradient(90deg,#ff1188 0%, #ffd700 35%, #00d8ff 75%, #00d8ff 100%);
+    -webkit-background-clip:text; background-clip:text;
+    -webkit-mask: radial-gradient(circle,#000 58%, transparent 59%) 0 0/var(--dot) var(--dot) repeat;
+            mask: radial-gradient(circle,#000 58%, transparent 59%) 0 0/var(--dot) var(--dot) repeat;
+    filter: drop-shadow(0 0 1.5px rgba(255,255,255,.35)) drop-shadow(0 0 6px rgba(255,255,255,.18));
+  }
+
+  /* 툴바 & 플레이시 숨김 */
+  #toolbar{
+    position:fixed;left:0;right:0;bottom:0;display:grid;gap:10px;grid-template-columns:repeat(4,1fr);
+    background:#0b0b0b;border-top:1px solid var(--line);padding:12px 10px;transition:transform .28s ease;
+  }
+  body.ui-hidden #toolbar{ transform: translateY(120%); }
+
+  .btn{ padding:14px 12px;background:var(--btn);border:1px solid var(--btnb);border-radius:14px;color:#fff;
+        font-size:16px;font-weight:600;min-height:48px }
+  .btn:active{transform:translateY(1px)}
+
+  /* 모달 공통 + 큰 입력 UI */
+  dialog{border:none;border-radius:20px;background:var(--card);color:#fff;padding:0;max-width:96vw}
+  dialog::backdrop{background:rgba(0,0,0,.5)}
+  .modal{display:grid;grid-template-rows:auto 1fr auto;min-width:320px;max-height:80dvh}
+  .m-head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  .m-body{padding:12px 16px;overflow:auto}
+  .m-foot{padding:10px 16px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--card)}
+  .h3{margin:0;font-size:18px}
+  .grid{display:grid;gap:10px}
+  .g1{grid-template-columns:1fr}
+  .seg{display:flex;gap:8px}
+  .seg>*{flex:1}
+  label{display:grid;gap:6px;font-size:16px}
+  input[type="text"], select, input[type="color"]{
+    min-height: var(--ctl-h);
+    font-size:16px;padding:10px 12px;border-radius:12px;border:1px solid #2c2c2c;background:#181818;color:#fff;
+  }
+  input[type="range"]{ height: var(--ctl-h); }
+  input[type="checkbox"]{ width:24px;height:24px; transform:scale(1.15); accent-color:#4da3ff; }
+  .row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+  .pill{background:#181818;border:1px solid #2c2c2c;border-radius:999px;padding:6px 10px;font-size:13px}
+
+  /* 텍스트 스페셜 */
+  .glow{ text-shadow: 0 0 6px currentColor, 0 0 18px currentColor, 0 0 32px currentColor; }
+  .rainbow{
+    background:linear-gradient(90deg,#ff0040,#ff8000,#ffe600,#00d200,#00b3ff,#6a00ff,#ff00d4);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    animation:hue 6s linear infinite;
+  }
+  @keyframes hue{ from{ filter:hue-rotate(0)} to{ filter:hue-rotate(360deg)} }
+  .outline{ -webkit-text-stroke: calc(var(--strokeWidth)*1px) var(--strokeColor); text-shadow: 0 0 1px var(--strokeColor); }
+
+  /* 에니메이션 */
+  .blink{ animation: blink 1s step-end infinite } @keyframes blink{ 50%{ opacity:.1 } }
+  .slideX{ animation: slideX 2s ease-in-out infinite alternate } @keyframes slideX{ from{ transform:translateX(0)} to{ transform:translateX(20px)} }
+  .wave{ animation: wave 2.2s ease-in-out infinite } @keyframes wave{ 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-10px) } }
+
+  /* 배경 프리셋 */
+  .mode-black{ background:#000 }
+  .mode-blue{ background:#001a33 }
+  .mode-green{ background:#002b1a }
+  .mode-neon{ background: radial-gradient(circle at 50% 30%, #0a0f1e 0%, #020409 60%, #000 100%) }
+  .mode-grid{
+    background:
+      linear-gradient(#0c0c0c 1px, transparent 1px),
+      linear-gradient(90deg,#0c0c0c 1px, transparent 1px),
+      #000; background-size:10px 10px,10px 10px,auto;
+  }
+
+  /* HUD */
+  #hudHint{
+    position:fixed;left:50%;top:14px;transform:translateX(-50%);
+    background:rgba(0,0,0,.65);color:#fff;padding:8px 12px;border-radius:999px;
+    font-size:13px;border:1px solid rgba(255,255,255,.15);opacity:0;pointer-events:none;
+    transition: opacity .25s ease;
+  }
+  #hudHint.show{ opacity:1; }
+</style>
+</head>
+<body class="mode-black">
+  <main id="stage">
+    <canvas id="fxLayer"></canvas>
+    <div id="text"><span id="content">모바일 전광판</span></div>
+  </main>
+
+  <div id="hudHint" role="status" aria-live="polite">전체 화면: 두 번 탭하면 UI 표시</div>
+
+  <nav id="toolbar" aria-label="전광판 제어">
+    <button class="btn" id="btnTextFX">글자효과</button>
+    <button class="btn" id="btnFX">특수효과</button>
+    <button class="btn" id="btnAnim">에니메이션</button>
+    <button class="btn" id="btnMode">간판모드</button>
+    <button class="btn" id="btnBox">박스효과(테두리)</button>
+    <button class="btn" id="btnSave">저장</button>
+    <button class="btn" id="btnLoad">불러오기</button>
+    <button class="btn" id="btnPlay">플레이</button>
+  </nav>
+
+  <!-- 글자효과 -->
+  <dialog id="dlgTextFX">
+    <form method="dialog" class="modal">
+      <div class="m-head"><h3 class="h3">글자효과</h3></div>
+      <div class="m-body grid g1">
+        <label class="row">사용 <input type="checkbox" id="chkTextEnable" checked></label>
+        <label>문구<input id="inpMsg" value="모바일 전광판"/></label>
+        <label>글꼴
+          <select id="inpFont">
+            <option>Arial</option><option>Courier New</option>
+            <option>Gulim</option><option>Nanum Gothic</option><option>Pretendard</option>
+          </select>
+        </label>
+        <label class="row">글자 크기(px)
+          <output id="outSize" class="pill">64</output>
+          <input type="range" id="inpSize" min="16" max="200" value="64"/>
+        </label>
+        <label class="row">굵기
+          <output id="outWeight" class="pill">800</output>
+          <input type="range" id="inpWeight" min="100" max="900" step="100" value="800"/>
+        </label>
+        <label class="row">자간(letter-spacing)
+          <output id="outTrack" class="pill">0</output>
+          <input type="range" id="inpTrack" min="-2" max="20" value="0"/>
+        </label>
+        <label>글자 색상<input type="color" id="inpColor" value="#ff4040"/></label>
+      </div>
+      <div class="m-foot"><button class="pill" value="close">완료</button></div>
+    </form>
+  </dialog>
+
+  <!-- 특수효과 -->
+  <dialog id="dlgFX">
+    <form method="dialog" class="modal">
+      <div class="m-head"><h3 class="h3">특수효과</h3></div>
+      <div class="m-body grid g1">
+        <label class="row">사용 <input type="checkbox" id="chkFXEnable" checked></label>
+        <label>효과 선택
+          <select id="inpFX">
+            <option value="">없음</option>
+            <option value="glow">네온글로우</option>
+            <option value="rainbow">무지개</option>
+            <option value="outline">외곽선</option>
+            <option value="fireworks">폭죽</option>
+            <option value="led">LED</option>
+          </select>
+        </label>
+        <div id="fxOutlineOpts" hidden class="grid g1" style="margin-top:4px">
+          <span class="pill">외곽선 옵션</span>
+          <label>외곽선 색상<input type="color" id="inpStrokeColor" value="#000000"/></label>
+          <label class="row">외곽선 두께(px)
+            <output id="outStrokeW" class="pill">2</output>
+            <input type="range" id="inpStrokeWidth" min="1" max="8" value="2"/>
+          </label>
+        </div>
+        <div id="fxFireInfo" hidden class="grid g1" style="margin-top:4px">
+          <span class="pill">폭죽: 플레이 중 자동 발사</span>
+        </div>
+      </div>
+      <div class="m-foot"><button class="pill" value="close">완료</button></div>
+    </form>
+  </dialog>
+
+  <!-- 에니메이션 -->
+  <dialog id="dlgAnim">
+    <form method="dialog" class="modal">
+      <div class="m-head"><h3 class="h3">에니메이션</h3></div>
+      <div class="m-body grid g1">
+        <label class="row">사용 <input type="checkbox" id="chkAnimEnable" checked></label>
+        <label>종류
+          <select id="inpAnim">
+            <option value="">없음</option>
+            <option value="blink">깜박임</option>
+            <option value="slideX">좌우 살짝 이동</option>
+            <option value="wave">웨이브(상하)</option>
+          </select>
+        </label>
+      </div>
+      <div class="m-foot"><button class="pill" value="close">완료</button></div>
+    </form>
+  </dialog>
+
+  <!-- 간판모드 -->
+  <dialog id="dlgMode">
+    <form method="dialog" class="modal">
+      <div class="m-head"><h3 class="h3">간판모드</h3></div>
+      <div class="m-body grid g1">
+        <label class="row">사용 <input type="checkbox" id="chkModeEnable" checked></label>
+        <label>배경 프리셋
+          <select id="inpMode">
+            <option value="black">블랙</option>
+            <option value="blue">블루</option>
+            <option value="green">그린</option>
+            <option value="neon">네온</option>
+            <option value="grid">LED 그리드</option>
+            <option value="custom">사용자 지정</option>
+          </select>
+        </label>
+        <label>배경색(사용자 지정)<input type="color" id="inpBG" value="#000000"/></label>
+      </div>
+      <div class="m-foot"><button class="pill" value="close">완료</button></div>
+    </form>
+  </dialog>
+
+  <!-- 박스효과(테두리) -->
+  <dialog id="dlgBox">
+    <form method="dialog" class="modal">
+      <div class="m-head"><h3 class="h3">박스효과(테두리)</h3></div>
+      <div class="m-body grid g1">
+        <label class="row">사용 <input type="checkbox" id="inpBoxEnable" checked></label>
+        <label>박스 색상 <input type="color" id="inpBoxColor" value="#ffffff"/></label>
+        <label class="row">박스 두께(px)
+          <output id="outBoxW" class="pill">2</output>
+          <input type="range" id="inpBoxWidth" min="1" max="12" value="2"/>
+        </label>
+        <label class="row">모서리 반경(px)
+          <output id="outBoxR" class="pill">18</output>
+          <input type="range" id="inpBoxRadius" min="0" max="40" value="18"/>
+        </label>
+      </div>
+      <div class="m-foot"><button class="pill" value="close">완료</button></div>
+    </form>
+  </dialog>
+
+  <!-- 저장 -->
+  <dialog id="dlgSave">
+    <form method="dialog" class="modal">
+      <div class="m-head"><h3 class="h3">설정 저장</h3></div>
+      <div class="m-body grid g1">
+        <div class="seg">
+          <button class="btn" data-save="A">슬롯 A</button>
+          <button class="btn" data-save="B">슬롯 B</button>
+          <button class="btn" data-save="C">슬롯 C</button>
+        </div>
+        <button class="btn" id="btnExport">JSON 내보내기</button>
+      </div>
+      <div class="m-foot"><button class="pill" value="close">완료</button></div>
+    </form>
+  </dialog>
+
+  <!-- 불러오기 -->
+  <dialog id="dlgLoad">
+    <form method="dialog" class="modal">
+      <div class="m-head"><h3 class="h3">설정 불러오기</h3></div>
+      <div class="m-body grid g1">
+        <div class="seg">
+          <button class="btn" data-load="A">슬롯 A</button>
+          <button class="btn" data-load="B">슬롯 B</button>
+          <button class="btn" data-load="C">슬롯 C</button>
+        </div>
+        <label class="btn" style="display:inline-grid;place-items:center">
+          JSON 가져오기
+          <input id="inpImport" type="file" accept="application/json" style="display:none"/>
+        </label>
+      </div>
+      <div class="m-foot"><button class="pill" value="close">완료</button></div>
+    </form>
+  </dialog>
+
+<script>
+/* ===== 전역 & 캔버스 (폭죽 풀사이즈 유지) ===== */
+let RAF=null, fireworksOn=false, particles=[];
+const $ = s => document.querySelector(s);
+const stage = $("#stage");
+const fxCanvas = $("#fxLayer");
+const ctx = fxCanvas.getContext("2d");
+const content=$("#content"), textWrap=$("#text");
+
+function resizeCanvas(){
+  const rect = stage.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  fxCanvas.style.width = rect.width + 'px';
+  fxCanvas.style.height = rect.height + 'px';
+  fxCanvas.width = Math.round(rect.width * dpr);
+  fxCanvas.height = Math.round(rect.height * dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,rect.width,rect.height);
+}
+function canvasSize(){ const dpr = window.devicePixelRatio||1; return { w:fxCanvas.width/dpr, h:fxCanvas.height/dpr }; }
+function startFireworks(){ fireworksOn=true; if(!RAF) loop(); }
+function stopFireworks(){ fireworksOn=false; particles=[]; if(RAF){ cancelAnimationFrame(RAF); RAF=null; } const {w,h}=canvasSize(); ctx.clearRect(0,0,w,h); }
+function spawnFirework(){
+  const { w,h } = canvasSize();
+  const x = Math.random()*w;
+  const y = Math.random()*(h*0.6)+h*0.2;
+  const color = `hsl(${(Math.random()*360)|0} 100% 60%)`;
+  const count = 80 + Math.random()*40;
+  for(let i=0;i<count;i++){
+    const a=Math.random()*Math.PI*2, s=Math.random()*3+1.5;
+    particles.push({ x,y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, life:60+Math.random()*30, color });
+  }
+}
+function loop(){
+  RAF=requestAnimationFrame(loop);
+  const { w,h } = canvasSize();
+  ctx.clearRect(0,0,w,h);
+  if(fireworksOn && Math.random()<0.08) spawnFirework();
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx; p.y+=p.vy; p.vy+=0.03; p.life--;
+    ctx.globalCompositeOperation="lighter"; ctx.fillStyle=p.color; ctx.globalAlpha=Math.max(0,p.life/90);
+    ctx.beginPath(); ctx.arc(p.x,p.y,2,0,Math.PI*2); ctx.fill();
+    if(p.life<=0 || p.x<0 || p.x>w || p.y>h) particles.splice(i,1);
+  }
+}
+
+/* ===== 모달 열기 & 바깥 클릭 닫기 ===== */
+$("#btnTextFX").onclick=()=>$("#dlgTextFX").showModal();
+$("#btnFX").onclick=()=>$("#dlgFX").showModal();
+$("#btnAnim").onclick=()=>$("#dlgAnim").showModal();
+$("#btnMode").onclick=()=>$("#dlgMode").showModal();
+$("#btnBox").onclick=()=>$("#dlgBox").showModal();
+$("#btnSave").onclick=()=>$("#dlgSave").showModal();
+$("#btnLoad").onclick=()=>$("#dlgLoad").showModal();
+document.querySelectorAll("dialog").forEach(dlg=>{
+  dlg.addEventListener("click", e=>{ if(e.target===dlg) dlg.close(); });
+});
+
+/* ===== 입력 요소 ===== */
+const inpMsg=$("#inpMsg"), inpFont=$("#inpFont"), inpSize=$("#inpSize"),
+      inpWeight=$("#inpWeight"), inpTrack=$("#inpTrack"), inpColor=$("#inpColor"),
+      outSize=$("#outSize"), outWeight=$("#outWeight"), outTrack=$("#outTrack");
+
+const chkTextEnable=$("#chkTextEnable");
+
+const chkFXEnable=$("#chkFXEnable"),
+      inpFX=$("#inpFX"), fxOutlineOpts=$("#fxOutlineOpts"), fxFireInfo=$("#fxFireInfo"),
+      inpStrokeColor=$("#inpStrokeColor"), inpStrokeWidth=$("#inpStrokeWidth"), outStrokeW=$("#outStrokeW");
+
+const chkAnimEnable=$("#chkAnimEnable"), inpAnim=$("#inpAnim");
+
+const chkModeEnable=$("#chkModeEnable"), inpMode=$("#inpMode"), inpBG=$("#inpBG");
+
+/* 박스효과 전용 */
+const inpBoxEnable=$("#inpBoxEnable"),
+      inpBoxColor=$("#inpBoxColor"), inpBoxWidth=$("#inpBoxWidth"), outBoxW=$("#outBoxW"),
+      inpBoxRadius=$("#inpBoxRadius"), outBoxR=$("#outBoxR");
+
+/* ===== 상태 저장 ===== */
+const KEY="sign.mobile.integrated.v12", SLOT={A:"sign.slot.A",B:"sign.slot.B",C:"sign.slot.C"};
+
+/* ===== 적용 & 상태 ===== */
+function snapshot(){
+  return {
+    textEnabled: chkTextEnable.checked ? 1 : 0,
+    fxEnabled: chkFXEnable.checked ? 1 : 0,
+    animEnabled: chkAnimEnable.checked ? 1 : 0,
+    modeEnabled: chkModeEnable.checked ? 1 : 0,
+    boxEnabled: inpBoxEnable.checked ? 1 : 0,
+
+    msg:inpMsg.value, font:inpFont.value, size:inpSize.value, weight:inpWeight.value,
+    track:inpTrack.value, color:inpColor.value,
+    fx:inpFX.value, strokeColor:inpStrokeColor.value, strokeWidth:inpStrokeWidth.value,
+    boxColor:inpBoxColor.value, boxWidth:inpBoxWidth.value, boxRadius:inpBoxRadius.value,
+    anim:inpAnim.value, mode:inpMode.value, bg:inpBG.value
+  };
+}
+function restore(d){
+  if("textEnabled" in d) chkTextEnable.checked = !!d.textEnabled;
+  if("fxEnabled" in d) chkFXEnable.checked = !!d.fxEnabled;
+  if("animEnabled" in d) chkAnimEnable.checked = !!d.animEnabled;
+  if("modeEnabled" in d) chkModeEnable.checked = !!d.modeEnabled;
+  if("boxEnabled" in d) inpBoxEnable.checked = !!d.boxEnabled;
+
+  const map={ msg:inpMsg,font:inpFont,size:inpSize,weight:inpWeight,track:inpTrack,color:inpColor,
+    fx:inpFX, strokeColor:inpStrokeColor, strokeWidth:inpStrokeWidth,
+    boxColor:inpBoxColor, boxWidth:inpBoxWidth, boxRadius:inpBoxRadius,
+    anim:inpAnim, mode:inpMode, bg:inpBG };
+  Object.entries(d).forEach(([k,v])=>map[k]&&(map[k].value=v));
+  syncOutputs(); showFXOpts(); apply();
+}
+
+function apply(){
+  content.textContent = inpMsg.value;
+
+  if(chkTextEnable.checked){
+    textWrap.style.fontFamily = inpFont.value;
+    document.documentElement.style.setProperty("--fs", inpSize.value+"px");
+    document.documentElement.style.setProperty("--fw", inpWeight.value);
+    document.documentElement.style.setProperty("--track", inpTrack.value+"px");
+    document.documentElement.style.setProperty("--tc", inpColor.value);
+  }
+
+  // 초기화
+  content.className = "";
+  textWrap.classList.remove("boxed");
+  stage.classList.remove("stage-led");
+  stopFireworks();
+
+  // 특수효과
+  if(chkFXEnable.checked){
+    switch(inpFX.value){
+      case "glow": content.classList.add("glow"); break;
+      case "rainbow": content.classList.add("rainbow"); break;
+      case "outline":
+        content.classList.add("outline");
+        document.documentElement.style.setProperty("--strokeColor", inpStrokeColor.value);
+        document.documentElement.style.setProperty("--strokeWidth", inpStrokeWidth.value);
+        break;
+      case "fireworks": startFireworks(); break;
+      case "led":
+        content.classList.add("led");
+        stage.classList.add("stage-led");
+        break;
+    }
+  }
+
+  // 박스효과
+  if(inpBoxEnable.checked){
+    textWrap.classList.add("boxed");
+    document.documentElement.style.setProperty("--boxColor", inpBoxColor.value);
+    document.documentElement.style.setProperty("--boxWidth", inpBoxWidth.value);
+    document.documentElement.style.setProperty("--boxRadius", inpBoxRadius.value+"px");
+  }
+
+  // 에니메이션
+  ["blink","slideX","wave"].forEach(c=>content.classList.remove(c));
+  if(chkAnimEnable.checked && inpAnim.value) content.classList.add(inpAnim.value);
+
+  // 간판모드
+  if(chkModeEnable.checked){
+    document.body.className = document.body.className.replace(/\bmode-\w+\b/g,'').trim();
+    document.body.classList.add("mode-"+inpMode.value);
+    document.body.style.background = (inpMode.value==="custom") ? inpBG.value : "";
+  }
+
+  localStorage.setItem(KEY, JSON.stringify(snapshot()));
+}
+
+/* 출력 동기화/옵션 토글 */
+function syncOutputs(){
+  outSize.textContent = inpSize.value;
+  outWeight.textContent = inpWeight.value;
+  outTrack.textContent = inpTrack.value;
+  outStrokeW.textContent = inpStrokeWidth.value;
+  outBoxW.textContent = inpBoxWidth.value;
+  outBoxR.textContent = inpBoxRadius.value;
+}
+function showFXOpts(){
+  const t=inpFX.value;
+  fxOutlineOpts.hidden = t!=="outline" || !chkFXEnable.checked;
+  fxFireInfo.hidden = t!=="fireworks" || !chkFXEnable.checked;
+}
+
+/* 바인딩 */
+[
+  chkTextEnable, chkFXEnable, chkAnimEnable, chkModeEnable,
+  inpMsg,inpFont,inpSize,inpWeight,inpTrack,inpColor,
+  inpFX,inpStrokeColor,inpStrokeWidth,
+  inpAnim,inpMode,inpBG,
+  inpBoxEnable,inpBoxColor,inpBoxWidth,inpBoxRadius
+].forEach(el=>{
+  el.addEventListener("input", ()=>{ showFXOpts(); syncOutputs(); apply(); });
+  el.addEventListener("change", ()=>{ showFXOpts(); syncOutputs(); apply(); });
+});
+
+/* 저장/불러오기 */
+document.querySelectorAll("[data-save]").forEach(b=>b.onclick=(e)=>{
+  e.preventDefault();
+  localStorage.setItem(SLOT[b.dataset.save], JSON.stringify(snapshot()));
+  alert(`슬롯 ${b.dataset.save} 저장`);
+});
+document.querySelectorAll("[data-load]").forEach(b=>b.onclick=(e)=>{
+  e.preventDefault();
+  const raw = localStorage.getItem(SLOT[b.dataset.load]);
+  if(!raw) return alert(`슬롯 ${b.dataset.load} 비어있음`);
+  try{ restore(JSON.parse(raw)); alert(`슬롯 ${b.dataset.load} 불러옴`); }catch(err){ alert("불러오기 실패: "+err.message); }
+});
+$("#btnExport").onclick=(e)=>{
+  e.preventDefault();
+  const blob=new Blob([JSON.stringify(snapshot(),null,2)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="sign-settings.json"; a.click();
+  URL.revokeObjectURL(a.href);
+};
+$("#inpImport").addEventListener("change", async(e)=>{
+  const f=e.target.files?.[0]; if(!f) return;
+  try{ const txt=await f.text(); restore(JSON.parse(txt)); alert("가져오기 완료"); }
+  catch(err){ alert("가져오기 실패: "+err.message); }
+  finally{ e.target.value=""; }
+});
+
+/* ===== 플레이: UI 숨김 + 더블탭 표시 + 가로모드 ===== */
+const btnPlay = $("#btnPlay");
+const hudHint = $("#hudHint");
+let playing=false, uiAutoHideTimer=null, lastTapTime=0;
+
+function flashHUD(ms=1700){ hudHint.classList.add("show"); setTimeout(()=>hudHint.classList.remove("show"), ms); }
+function hideUI(){ document.body.classList.add("ui-hidden"); }
+function showUI(tempMs=5000){
+  document.body.classList.remove("ui-hidden");
+  if(uiAutoHideTimer) clearTimeout(uiAutoHideTimer);
+  uiAutoHideTimer = setTimeout(()=>{ if(playing) hideUI(); }, tempMs);
+}
+
+btnPlay.addEventListener("click", async()=>{
+  try{
+    if(!document.fullscreenElement) await document.documentElement.requestFullscreen();
+    if(screen.orientation?.lock) try{ await screen.orientation.lock("landscape"); }catch(_){}
+    playing = true; hideUI(); flashHUD(); setTimeout(resizeCanvas, 0);
+  }catch(e){ alert("플레이 시작 실패: "+e.message); }
+});
+document.addEventListener("fullscreenchange", ()=>{
+  if(!document.fullscreenElement){
+    playing=false; document.body.classList.remove("ui-hidden");
+    if(uiAutoHideTimer) clearTimeout(uiAutoHideTimer);
+  }
+});
+// 더블탭으로 UI 표시
+function onDoubleTapToggle(){
+  if(!playing) return;
+  const now=Date.now();
+  if(now - lastTapTime < 350){ showUI(); } // 5초 표시
+  lastTapTime = now;
+}
+stage.addEventListener("pointerup", onDoubleTapToggle);
+stage.addEventListener("click", onDoubleTapToggle, { passive:true });
+
+/* 리사이즈 훅 */
+window.addEventListener('resize', resizeCanvas);
+document.addEventListener('fullscreenchange', resizeCanvas);
+window.addEventListener('orientationchange', ()=>setTimeout(resizeCanvas, 100));
+
+/* 초기화 */
+(function(){
+  resizeCanvas();
+  const raw = localStorage.getItem(KEY);
+  if(raw){ try{ restore(JSON.parse(raw)); return; }catch(e){} }
+  syncOutputs(); showFXOpts(); apply();
+})();
+</script>
+</body>
+</html>
