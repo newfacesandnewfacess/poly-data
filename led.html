@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>모바일 전광판 · 통합 완전본</title>
+<title>모바일 전광판 · 중앙정렬 적용</title>
 <style>
   :root{
     --bg:#000; --fg:#fff; --card:#111; --line:#222;
@@ -12,9 +12,20 @@
     --strokeColor:#000000; --strokeWidth:2;
     --boxColor:#ffffff; --boxWidth:2; --boxRadius:18;
     --ctl-h:48px;
-    --dot:6px; /* LED 도트 크기 */
+    --dot:6px;
+
+    /* 애니 변수 */
+    --blinkDur:1s;
+    --slideDur:2s; --slideAmp:20px;
+    --waveDur:2.2s; --waveAmp:10px;
+    --bounceDur:1.6s; --bounceAmp:12px; --bounceStagger:0.06s;
+
+    /* 흐름 변수 */
+    --flowFrom: 0px;
+    --flowTo: 0px;
+    --flowDur: 5s;
   }
-  html,body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,Arial,Apple SD Gothic Neo}
+  html,body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,Arial,Apple SD Gothic Neo; height:100%;}
 
   #stage{min-height:72dvh;display:grid;place-items:center;position:relative;overflow:hidden;padding:8px}
   #fxLayer{position:absolute;inset:0;pointer-events:none;z-index:0}
@@ -29,7 +40,24 @@
     box-shadow: 0 0 10px color-mix(in srgb, var(--boxColor) 50%, transparent);
   }
 
-  /* LED 보드 배경 + 상하 흰 도트 라인 */
+  /* ▶ 플레이 중 중앙 정렬 */
+  body.playing{
+    display:grid;
+    place-items:center;
+    min-height:100dvh;
+  }
+  body.playing #stage{
+    min-height:100dvh;
+    width:100vw;
+    margin:0 auto;
+  }
+  body.playing.mode-black,
+  body.playing[class*="mode-"]{
+    background-position:center center;
+    background-repeat:no-repeat;
+  }
+
+  /* LED 보드 + 라인 */
   .stage-led{
     background:
       radial-gradient(circle,#2a2a2a 32%,transparent 33%) 0 0/var(--dot) var(--dot) repeat,#000;
@@ -42,7 +70,7 @@
   #stage.stage-led::before{ top: calc(var(--dot)*.5); }
   #stage.stage-led::after{  bottom: calc(var(--dot)*.5); }
 
-  /* LED 텍스트(도트 마스크) */
+  /* LED 텍스트 */
   .led{
     color:transparent;
     background: linear-gradient(90deg,#ff1188 0%, #ffd700 35%, #00d8ff 75%, #00d8ff 100%);
@@ -52,7 +80,7 @@
     filter: drop-shadow(0 0 1.5px rgba(255,255,255,.35)) drop-shadow(0 0 6px rgba(255,255,255,.18));
   }
 
-  /* 툴바 & 플레이시 숨김 */
+  /* 툴바 */
   #toolbar{
     position:fixed;left:0;right:0;bottom:0;display:grid;gap:10px;grid-template-columns:repeat(4,1fr);
     background:#0b0b0b;border-top:1px solid var(--line);padding:12px 10px;transition:transform .28s ease;
@@ -63,7 +91,7 @@
         font-size:16px;font-weight:600;min-height:48px }
   .btn:active{transform:translateY(1px)}
 
-  /* 모달 공통 + 큰 입력 UI */
+  /* 모달 공통 */
   dialog{border:none;border-radius:20px;background:var(--card);color:#fff;padding:0;max-width:96vw}
   dialog::backdrop{background:rgba(0,0,0,.5)}
   .modal{display:grid;grid-template-rows:auto 1fr auto;min-width:320px;max-height:80dvh}
@@ -76,16 +104,17 @@
   .seg{display:flex;gap:8px}
   .seg>*{flex:1}
   label{display:grid;gap:6px;font-size:16px}
-  input[type="text"], select, input[type="color"]{
+  input[type="text"], textarea, select, input[type="color"]{
     min-height: var(--ctl-h);
     font-size:16px;padding:10px 12px;border-radius:12px;border:1px solid #2c2c2c;background:#181818;color:#fff;
   }
+  textarea{ resize:vertical; max-height: calc(var(--ctl-h)*4); }
   input[type="range"]{ height: var(--ctl-h); }
   input[type="checkbox"]{ width:24px;height:24px; transform:scale(1.15); accent-color:#4da3ff; }
   .row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
   .pill{background:#181818;border:1px solid #2c2c2c;border-radius:999px;padding:6px 10px;font-size:13px}
 
-  /* 텍스트 스페셜 */
+  /* 스페셜 텍스트 */
   .glow{ text-shadow: 0 0 6px currentColor, 0 0 18px currentColor, 0 0 32px currentColor; }
   .rainbow{
     background:linear-gradient(90deg,#ff0040,#ff8000,#ffe600,#00d200,#00b3ff,#6a00ff,#ff00d4);
@@ -95,10 +124,21 @@
   @keyframes hue{ from{ filter:hue-rotate(0)} to{ filter:hue-rotate(360deg)} }
   .outline{ -webkit-text-stroke: calc(var(--strokeWidth)*1px) var(--strokeColor); text-shadow: 0 0 1px var(--strokeColor); }
 
-  /* 에니메이션 */
-  .blink{ animation: blink 1s step-end infinite } @keyframes blink{ 50%{ opacity:.1 } }
-  .slideX{ animation: slideX 2s ease-in-out infinite alternate } @keyframes slideX{ from{ transform:translateX(0)} to{ transform:translateX(20px)} }
-  .wave{ animation: wave 2.2s ease-in-out infinite } @keyframes wave{ 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-10px) } }
+  /* 기본 에니메이션 */
+  .blink{ animation: blink var(--blinkDur) step-end infinite }
+  @keyframes blink{ 50%{ opacity:.1 } }
+  .slideX{ display:inline-block; animation: slideX var(--slideDur) ease-in-out infinite alternate }
+  @keyframes slideX{ from{ transform:translateX(0)} to{ transform:translateX(var(--slideAmp)) } }
+  .wave{ display:inline-block; animation: wave var(--waveDur) ease-in-out infinite }
+  @keyframes wave{ 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(calc(var(--waveAmp)*-1)) } }
+  .bounce span.ch{ display:inline-block; animation: bounce var(--bounceDur) ease-in-out infinite; }
+  @keyframes bounce{ 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(calc(var(--bounceAmp)*-1)) } }
+
+  /* 흐름 */
+  .flowX{ display:inline-block; animation: flowX var(--flowDur) linear 1 both; will-change: transform; }
+  @keyframes flowX{ from{ transform: translateX(var(--flowFrom)) } to{ transform: translateX(var(--flowTo)) } }
+  .flowY{ display:inline-block; animation: flowY var(--flowDur) linear 1 both; will-change: transform; }
+  @keyframes flowY{ from{ transform: translateY(var(--flowFrom)) } to{ transform: translateY(var(--flowTo)) } }
 
   /* 배경 프리셋 */
   .mode-black{ background:#000 }
@@ -147,7 +187,9 @@
       <div class="m-head"><h3 class="h3">글자효과</h3></div>
       <div class="m-body grid g1">
         <label class="row">사용 <input type="checkbox" id="chkTextEnable" checked></label>
-        <label>문구<input id="inpMsg" value="모바일 전광판"/></label>
+        <label>문구
+          <textarea id="inpMsg" rows="3" placeholder="최대 3행까지 입력 가능합니다.">모바일 전광판</textarea>
+        </label>
         <label>글꼴
           <select id="inpFont">
             <option>Arial</option><option>Courier New</option>
@@ -216,8 +258,54 @@
             <option value="blink">깜박임</option>
             <option value="slideX">좌우 살짝 이동</option>
             <option value="wave">웨이브(상하)</option>
+            <option value="bounce">글자별 통통튀기</option>
+            <option value="flowLeft">흐름(← 왼쪽)</option>
+            <option value="flowRight">흐름(→ 오른쪽)</option>
+            <option value="flowUp">흐름(↑ 위)</option>
+            <option value="flowDown">흐름(↓ 아래)</option>
           </select>
         </label>
+
+        <!-- 옵션 영역 -->
+        <div id="animOpts" class="grid g1" style="margin-top:4px">
+          <div id="optBlink" hidden>
+            <label class="row">속도(초)
+              <input type="range" id="rngBlinkDur" min="0.2" max="3" step="0.1" value="1"/>
+            </label>
+          </div>
+          <div id="optSlide" hidden>
+            <label class="row">속도(초)
+              <input type="range" id="rngSlideDur" min="0.5" max="5" step="0.1" value="2"/>
+            </label>
+            <label class="row">진폭(px)
+              <input type="range" id="rngSlideAmp" min="5" max="100" step="1" value="20"/>
+            </label>
+          </div>
+          <div id="optWave" hidden>
+            <label class="row">속도(초)
+              <input type="range" id="rngWaveDur" min="0.5" max="5" step="0.1" value="2.2"/>
+            </label>
+            <label class="row">진폭(px)
+              <input type="range" id="rngWaveAmp" min="5" max="100" step="1" value="10"/>
+            </label>
+          </div>
+          <div id="optBounce" hidden>
+            <label class="row">속도(초)
+              <input type="range" id="rngBounceDur" min="0.4" max="5" step="0.1" value="1.6"/>
+            </label>
+            <label class="row">진폭(px)
+              <input type="range" id="rngBounceAmp" min="4" max="120" step="1" value="12"/>
+            </label>
+            <label class="row">스태거(초)
+              <input type="range" id="rngBounceStg" min="0" max="0.3" step="0.01" value="0.06"/>
+            </label>
+          </div>
+          <div id="optFlow" hidden>
+            <label class="row">속도(px/s)
+              <input type="range" id="rngFlowSpeed" min="30" max="400" step="5" value="120"/>
+            </label>
+          </div>
+        </div>
       </div>
       <div class="m-foot"><button class="pill" value="close">완료</button></div>
     </form>
@@ -245,7 +333,7 @@
     </form>
   </dialog>
 
-  <!-- 박스효과(테두리) -->
+  <!-- 박스효과 -->
   <dialog id="dlgBox">
     <form method="dialog" class="modal">
       <div class="m-head"><h3 class="h3">박스효과(테두리)</h3></div>
@@ -301,7 +389,7 @@
   </dialog>
 
 <script>
-/* ===== 전역 & 캔버스 (폭죽 풀사이즈 유지) ===== */
+/* ===== 전역 & 캔버스 ===== */
 let RAF=null, fireworksOn=false, particles=[];
 const $ = s => document.querySelector(s);
 const stage = $("#stage");
@@ -347,7 +435,7 @@ function loop(){
   }
 }
 
-/* ===== 모달 열기 & 바깥 클릭 닫기 ===== */
+/* ===== 모달 ===== */
 $("#btnTextFX").onclick=()=>$("#dlgTextFX").showModal();
 $("#btnFX").onclick=()=>$("#dlgFX").showModal();
 $("#btnAnim").onclick=()=>$("#dlgAnim").showModal();
@@ -359,7 +447,7 @@ document.querySelectorAll("dialog").forEach(dlg=>{
   dlg.addEventListener("click", e=>{ if(e.target===dlg) dlg.close(); });
 });
 
-/* ===== 입력 요소 ===== */
+/* ===== 입력 ===== */
 const inpMsg=$("#inpMsg"), inpFont=$("#inpFont"), inpSize=$("#inpSize"),
       inpWeight=$("#inpWeight"), inpTrack=$("#inpTrack"), inpColor=$("#inpColor"),
       outSize=$("#outSize"), outWeight=$("#outWeight"), outTrack=$("#outTrack");
@@ -372,17 +460,99 @@ const chkFXEnable=$("#chkFXEnable"),
 
 const chkAnimEnable=$("#chkAnimEnable"), inpAnim=$("#inpAnim");
 
+/* 애니 옵션 */
+const animOpts=$("#animOpts"),
+      optBlink=$("#optBlink"), optSlide=$("#optSlide"), optWave=$("#optWave"), optBounce=$("#optBounce"), optFlow=$("#optFlow");
+const rngBlinkDur=$("#rngBlinkDur"),
+      rngSlideDur=$("#rngSlideDur"), rngSlideAmp=$("#rngSlideAmp"),
+      rngWaveDur=$("#rngWaveDur"), rngWaveAmp=$("#rngWaveAmp"),
+      rngBounceDur=$("#rngBounceDur"), rngBounceAmp=$("#rngBounceAmp"), rngBounceStg=$("#rngBounceStg"),
+      rngFlowSpeed=$("#rngFlowSpeed");
+
 const chkModeEnable=$("#chkModeEnable"), inpMode=$("#inpMode"), inpBG=$("#inpBG");
 
-/* 박스효과 전용 */
+/* 박스효과 */
 const inpBoxEnable=$("#inpBoxEnable"),
       inpBoxColor=$("#inpBoxColor"), inpBoxWidth=$("#inpBoxWidth"), outBoxW=$("#outBoxW"),
       inpBoxRadius=$("#inpBoxRadius"), outBoxR=$("#outBoxR");
 
 /* ===== 상태 저장 ===== */
-const KEY="sign.mobile.integrated.v12", SLOT={A:"sign.slot.A",B:"sign.slot.B",C:"sign.slot.C"};
+const KEY="sign.mobile.integrated.v14", SLOT={A:"sign.slot.A",B:"sign.slot.B",C:"sign.slot.C"};
 
-/* ===== 적용 & 상태 ===== */
+/* ===== 유틸 & 내용 세팅 ===== */
+function setVar(name, value){ document.documentElement.style.setProperty(name, value); }
+function getLines(){ return inpMsg.value.replace(/\r/g,'').split('\n').slice(0,3).map(s=>s||' '); }
+function escapeHtml(s){ return s.replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function setSimpleContent(){
+  const html = getLines().map(l=>escapeHtml(l)).join('<br>');
+  content.innerHTML = html;
+}
+function setPerChar(enabled){
+  if(!enabled){ setSimpleContent(); return; }
+  const html = getLines().map(line=>{
+    return Array.from(line).map((ch,i)=>`<span class="ch" style="animation-delay:${(i*parseFloat(rngBounceStg.value||0))}s">${escapeHtml(ch)}</span>`).join('');
+  }).join('<br>');
+  content.innerHTML = html;
+}
+
+/* ===== 흐름(4방향) ===== */
+let flowActive=false, flowIdx=0, onFlowEnd=null;
+const measureEl = document.createElement('div');
+measureEl.id='measure'; measureEl.style.cssText='position:absolute;left:-9999px;top:-9999px;white-space:nowrap;font:inherit;font-size:var(--fs);font-weight:var(--fw);letter-spacing:var(--track);padding:0;margin:0;';
+document.body.appendChild(measureEl);
+function measureText(line){ measureEl.textContent = line; const r=measureEl.getBoundingClientRect(); return {w:r.width, h:r.height}; }
+function cancelFlow(){
+  flowActive=false; flowIdx=0;
+  content.removeEventListener('animationend', onFlowEnd||(()=>{}));
+  content.classList.remove('flowX','flowY');
+}
+function startFlow(dir){
+  flowActive=true; flowIdx=0;
+  runOneFlow(dir);
+}
+function runOneFlow(dir){
+  if(!flowActive) return;
+  const lines = getLines(); if(lines.length===0) return;
+  const line = lines[flowIdx % lines.length];
+
+  // 측정
+  content.textContent = line; // 측정 안정화
+  const {w:tw, h:th} = measureText(line);
+  const rect = stage.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
+  const pad = 24;
+  const speed = parseFloat(rngFlowSpeed.value || 120);
+
+  let from, to, dur, cls;
+  if(dir==='flowLeft' || dir==='flowRight'){
+    const dist = (W/2 + tw/2 + pad) * 2;
+    dur = dist / speed;
+    cls = 'flowX';
+    if(dir==='flowLeft'){ from =  (W/2 + tw/2 + pad)+'px'; to = -(W/2 + tw/2 + pad)+'px'; }
+    else{                 from = -(W/2 + tw/2 + pad)+'px'; to =  (W/2 + tw/2 + pad)+'px'; }
+    setVar('--flowFrom', from); setVar('--flowTo', to); setVar('--flowDur', dur+'s');
+    content.classList.remove('flowY'); content.classList.add('flowX');
+  }else{
+    const dist = (H/2 + th/2 + pad) * 2;
+    dur = dist / speed;
+    cls = 'flowY';
+    if(dir==='flowUp'){   from =  (H/2 + th/2 + pad)+'px'; to = -(H/2 + th/2 + pad)+'px'; }
+    else{                 from = -(H/2 + th/2 + pad)+'px'; to =  (H/2 + th/2 + pad)+'px'; }
+    setVar('--flowFrom', from); setVar('--flowTo', to); setVar('--flowDur', dur+'s');
+    content.classList.remove('flowX'); content.classList.add('flowY');
+  }
+
+  if(onFlowEnd) content.removeEventListener('animationend', onFlowEnd);
+  onFlowEnd = ()=>{
+    content.classList.remove(cls);
+    void content.offsetWidth; // reflow
+    flowIdx++;
+    runOneFlow(dir);
+  };
+  content.addEventListener('animationend', onFlowEnd, {once:true});
+}
+
+/* ===== 스냅샷 ===== */
 function snapshot(){
   return {
     textEnabled: chkTextEnable.checked ? 1 : 0,
@@ -395,7 +565,12 @@ function snapshot(){
     track:inpTrack.value, color:inpColor.value,
     fx:inpFX.value, strokeColor:inpStrokeColor.value, strokeWidth:inpStrokeWidth.value,
     boxColor:inpBoxColor.value, boxWidth:inpBoxWidth.value, boxRadius:inpBoxRadius.value,
-    anim:inpAnim.value, mode:inpMode.value, bg:inpBG.value
+    anim:inpAnim.value, mode:inpMode.value, bg:inpBG.value,
+
+    blinkDur:rngBlinkDur.value, slideDur:rngSlideDur.value, slideAmp:rngSlideAmp.value,
+    waveDur:rngWaveDur.value, waveAmp:rngWaveAmp.value,
+    bounceDur:rngBounceDur.value, bounceAmp:rngBounceAmp.value, bounceStg:rngBounceStg.value,
+    flowSpeed:rngFlowSpeed.value
   };
 }
 function restore(d){
@@ -410,18 +585,53 @@ function restore(d){
     boxColor:inpBoxColor, boxWidth:inpBoxWidth, boxRadius:inpBoxRadius,
     anim:inpAnim, mode:inpMode, bg:inpBG };
   Object.entries(d).forEach(([k,v])=>map[k]&&(map[k].value=v));
-  syncOutputs(); showFXOpts(); apply();
+
+  if("blinkDur" in d) rngBlinkDur.value=d.blinkDur;
+  if("slideDur" in d) rngSlideDur.value=d.slideDur;
+  if("slideAmp" in d) rngSlideAmp.value=d.slideAmp;
+  if("waveDur" in d) rngWaveDur.value=d.waveDur;
+  if("waveAmp" in d) rngWaveAmp.value=d.waveAmp;
+  if("bounceDur" in d) rngBounceDur.value=d.bounceDur;
+  if("bounceAmp" in d) rngBounceAmp.value=d.bounceAmp;
+  if("bounceStg" in d) rngBounceStg.value=d.bounceStg;
+  if("flowSpeed" in d) rngFlowSpeed.value=d.flowSpeed;
+
+  syncOutputs(); showFXOpts(); showAnimOpts(); updateAnimVars(); apply();
 }
 
+/* ===== 변수 동기화 ===== */
+function updateAnimVars(){
+  setVar("--blinkDur", rngBlinkDur.value + "s");
+  setVar("--slideDur", rngSlideDur.value + "s");
+  setVar("--slideAmp", rngSlideAmp.value + "px");
+  setVar("--waveDur", rngWaveDur.value + "s");
+  setVar("--waveAmp", rngWaveAmp.value + "px");
+  setVar("--bounceDur", rngBounceDur.value + "s");
+  setVar("--bounceAmp", rngBounceAmp.value + "px");
+  setVar("--bounceStagger", rngBounceStg.value + "s");
+}
+function showAnimOpts(){
+  optBlink.hidden = optSlide.hidden = optWave.hidden = optBounce.hidden = optFlow.hidden = true;
+  switch(inpAnim.value){
+    case "blink": optBlink.hidden=false; break;
+    case "slideX": optSlide.hidden=false; break;
+    case "wave": optWave.hidden=false; break;
+    case "bounce": optBounce.hidden=false; break;
+    case "flowLeft": case "flowRight": case "flowUp": case "flowDown": optFlow.hidden=false; break;
+  }
+}
+
+/* ===== 적용 ===== */
 function apply(){
-  content.textContent = inpMsg.value;
+  // 내용(바운스는 문자 분해, 그 외 개행 유지)
+  if(inpAnim.value==="bounce"){ setPerChar(true); } else { setPerChar(false); }
 
   if(chkTextEnable.checked){
     textWrap.style.fontFamily = inpFont.value;
-    document.documentElement.style.setProperty("--fs", inpSize.value+"px");
-    document.documentElement.style.setProperty("--fw", inpWeight.value);
-    document.documentElement.style.setProperty("--track", inpTrack.value+"px");
-    document.documentElement.style.setProperty("--tc", inpColor.value);
+    setVar("--fs", inpSize.value+"px");
+    setVar("--fw", inpWeight.value);
+    setVar("--track", inpTrack.value+"px");
+    setVar("--tc", inpColor.value);
   }
 
   // 초기화
@@ -429,6 +639,7 @@ function apply(){
   textWrap.classList.remove("boxed");
   stage.classList.remove("stage-led");
   stopFireworks();
+  cancelFlow();
 
   // 특수효과
   if(chkFXEnable.checked){
@@ -437,8 +648,8 @@ function apply(){
       case "rainbow": content.classList.add("rainbow"); break;
       case "outline":
         content.classList.add("outline");
-        document.documentElement.style.setProperty("--strokeColor", inpStrokeColor.value);
-        document.documentElement.style.setProperty("--strokeWidth", inpStrokeWidth.value);
+        setVar("--strokeColor", inpStrokeColor.value);
+        setVar("--strokeWidth", inpStrokeWidth.value);
         break;
       case "fireworks": startFireworks(); break;
       case "led":
@@ -451,26 +662,28 @@ function apply(){
   // 박스효과
   if(inpBoxEnable.checked){
     textWrap.classList.add("boxed");
-    document.documentElement.style.setProperty("--boxColor", inpBoxColor.value);
-    document.documentElement.style.setProperty("--boxWidth", inpBoxWidth.value);
-    document.documentElement.style.setProperty("--boxRadius", inpBoxRadius.value+"px");
+    setVar("--boxColor", inpBoxColor.value);
+    setVar("--boxWidth", inpBoxWidth.value);
+    setVar("--boxRadius", inpBoxRadius.value+"px");
   }
 
   // 에니메이션
-  ["blink","slideX","wave"].forEach(c=>content.classList.remove(c));
-  if(chkAnimEnable.checked && inpAnim.value) content.classList.add(inpAnim.value);
-
-  // 간판모드
-  if(chkModeEnable.checked){
-    document.body.className = document.body.className.replace(/\bmode-\w+\b/g,'').trim();
-    document.body.classList.add("mode-"+inpMode.value);
-    document.body.style.background = (inpMode.value==="custom") ? inpBG.value : "";
+  ["blink","slideX","wave","bounce","flowX","flowY"].forEach(c=>content.classList.remove(c));
+  if(chkAnimEnable.checked && inpAnim.value){
+    if(["flowLeft","flowRight","flowUp","flowDown"].includes(inpAnim.value)){
+      setPerChar(false);
+      startFlow(inpAnim.value);
+    }else if(inpAnim.value==="bounce"){
+      setPerChar(true); content.classList.add("bounce");
+    }else{
+      setPerChar(false); content.classList.add(inpAnim.value);
+    }
   }
 
   localStorage.setItem(KEY, JSON.stringify(snapshot()));
 }
 
-/* 출력 동기화/옵션 토글 */
+/* ===== 보조 ===== */
 function syncOutputs(){
   outSize.textContent = inpSize.value;
   outWeight.textContent = inpWeight.value;
@@ -485,17 +698,21 @@ function showFXOpts(){
   fxFireInfo.hidden = t!=="fireworks" || !chkFXEnable.checked;
 }
 
-/* 바인딩 */
+/* ===== 이벤트 바인딩 ===== */
 [
   chkTextEnable, chkFXEnable, chkAnimEnable, chkModeEnable,
   inpMsg,inpFont,inpSize,inpWeight,inpTrack,inpColor,
   inpFX,inpStrokeColor,inpStrokeWidth,
-  inpAnim,inpMode,inpBG,
+  inpAnim, rngFlowSpeed,
+  inpMode,inpBG,
   inpBoxEnable,inpBoxColor,inpBoxWidth,inpBoxRadius
 ].forEach(el=>{
-  el.addEventListener("input", ()=>{ showFXOpts(); syncOutputs(); apply(); });
-  el.addEventListener("change", ()=>{ showFXOpts(); syncOutputs(); apply(); });
+  el.addEventListener("input", ()=>{ showFXOpts(); showAnimOpts(); updateAnimVars(); syncOutputs(); apply(); });
+  el.addEventListener("change", ()=>{ showFXOpts(); showAnimOpts(); updateAnimVars(); syncOutputs(); apply(); });
 });
+
+// 바운스/흐름 동작 시 텍스트 바뀌면 즉시 반영
+inpMsg.addEventListener("input", ()=>{ if(inpAnim.value==="bounce") setPerChar(true); if(["flowLeft","flowRight","flowUp","flowDown"].includes(inpAnim.value)) apply(); });
 
 /* 저장/불러오기 */
 document.querySelectorAll("[data-save]").forEach(b=>b.onclick=(e)=>{
@@ -539,35 +756,41 @@ btnPlay.addEventListener("click", async()=>{
   try{
     if(!document.fullscreenElement) await document.documentElement.requestFullscreen();
     if(screen.orientation?.lock) try{ await screen.orientation.lock("landscape"); }catch(_){}
-    playing = true; hideUI(); flashHUD(); setTimeout(resizeCanvas, 0);
+    playing = true;
+    document.body.classList.add("playing");  // ← 추가
+    hideUI(); flashHUD(); setTimeout(resizeCanvas, 0);
   }catch(e){ alert("플레이 시작 실패: "+e.message); }
 });
+
+// ▶ 전체화면 종료 시 중앙정렬 플래그 off
 document.addEventListener("fullscreenchange", ()=>{
   if(!document.fullscreenElement){
-    playing=false; document.body.classList.remove("ui-hidden");
+    playing=false;
+    document.body.classList.remove("playing"); // ← 추가
+    document.body.classList.remove("ui-hidden");
     if(uiAutoHideTimer) clearTimeout(uiAutoHideTimer);
   }
 });
-// 더블탭으로 UI 표시
 function onDoubleTapToggle(){
   if(!playing) return;
   const now=Date.now();
-  if(now - lastTapTime < 350){ showUI(); } // 5초 표시
+  if(now - lastTapTime < 350){ showUI(); }
   lastTapTime = now;
 }
 stage.addEventListener("pointerup", onDoubleTapToggle);
 stage.addEventListener("click", onDoubleTapToggle, { passive:true });
 
-/* 리사이즈 훅 */
-window.addEventListener('resize', resizeCanvas);
-document.addEventListener('fullscreenchange', resizeCanvas);
-window.addEventListener('orientationchange', ()=>setTimeout(resizeCanvas, 100));
+/* 리사이즈 */
+window.addEventListener('resize', ()=>{ resizeCanvas(); if(["flowLeft","flowRight","flowUp","flowDown"].includes(inpAnim.value)) apply(); });
+document.addEventListener('fullscreenchange', ()=>{ resizeCanvas(); if(["flowLeft","flowRight","flowUp","flowDown"].includes(inpAnim.value)) apply(); });
+window.addEventListener('orientationchange', ()=>setTimeout(()=>{ resizeCanvas(); if(["flowLeft","flowRight","flowUp","flowDown"].includes(inpAnim.value)) apply(); }, 100));
 
 /* 초기화 */
 (function(){
   resizeCanvas();
   const raw = localStorage.getItem(KEY);
   if(raw){ try{ restore(JSON.parse(raw)); return; }catch(e){} }
+  showAnimOpts(); updateAnimVars();
   syncOutputs(); showFXOpts(); apply();
 })();
 </script>
