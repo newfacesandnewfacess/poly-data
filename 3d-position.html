@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>단계 분해/조립 + 360° 확산 + 지면 방지 + 트윈 + 겹침 방지</title>
+  <style>
+    html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, sans-serif; }
+    #app { display: grid; grid-template-columns: 460px 1fr; grid-template-rows: auto 1fr auto; height: 100%; }
+    header { grid-column: 1 / -1; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; display:flex; gap:12px; align-items:center; }
+    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    #panel { padding: 16px; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; gap: 12px; }
+    #panel .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.04); }
+    label { font-size: 12px; color: #4b5563; display:block; margin-bottom: 6px; }
+    input[type=range], input[type=number] { width: 100%; }
+    button { padding: 8px 12px; border: 1px solid #e5e7eb; background: white; border-radius: 10px; cursor: pointer; }
+    button:hover { background: #f9fafb; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; }
+    #viewport { position: relative; }
+    #renderer { display: block; width: 100%; height: 100%; }
+    .tag { position:absolute; padding:4px 6px; background:white; border:1px solid #e5e7eb; border-radius:8px; font-size:11px; pointer-events:none; white-space:nowrap; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+    .muted { color:#6b7280; font-size: 12px; }
+    footer { padding: 8px 16px; border-top: 1px solid #e5e7eb; grid-column: 1 / -1; display:flex; justify-content:space-between; align-items:center; }
+    .kv { display:grid; grid-template-columns: 1fr auto; gap:6px; font-size:12px; color:#374151; }
+    .grid { display:grid; grid-template-columns: 1fr 110px; gap:6px; align-items:center; }
+    .pill { padding:2px 8px; border:1px solid #e5e7eb; border-radius:999px; font-size:12px; background:#fafafa; }
+    .subtle { font-size: 11px; color:#6b7280; }
+    .toggle { display:flex; align-items:center; gap:8px; }
+  </style>
+  <!-- UMD scripts (global THREE) -->
+  <script src="https://unpkg.com/three@0.147.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://unpkg.com/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>분해/조립 + 360° 확산 + 지면 방지 + 트윈 + 겹침 방지</h1>
+      <span class="muted">glb 업로드 → 자동 주석 → 단계 제어 · 정/역 재생</span>
+      <span id="stepIndicator" class="pill" style="margin-left:auto;">Step: -1</span>
+    </header>
+
+    <aside id="panel">
+      <div class="card">
+        <label>glTF(.gltf/.glb) 업로드</label>
+        <input id="file" type="file" accept=".gltf,.glb" />
+        <div class="kv" style="margin-top:8px;">
+          <span>파트 수</span><strong id="partCount">0</strong>
+          <span>바운딩 반지름</span><strong id="boundR">-</strong>
+        </div>
+      </div>
+
+      <div class="card">
+        <label>자동 주석(Annotate) 설정</label>
+        <div class="kv">
+          <span>단계 수 (1~16)</span><input id="stepCount" type="range" min="1" max="16" value="6" />
+          <span>확산 방식</span>
+          <select id="strategy">
+            <option value="radial">전방향(방사형: 센터→부품)</option>
+            <option value="random360">전방향(랜덤 360°)</option>
+            <option value="x">X축 정렬(좌→우)</option>
+            <option value="y">Y축 정렬(하→상)</option>
+            <option value="z">Z축 정렬(후→전)</option>
+          </select>
+          <span>폭발 거리 배율</span><input id="explodeMag" type="range" min="0.2" max="3" step="0.1" value="1.2" />
+          <span>랜덤성(±)</span><input id="randAmt" type="range" min="0" max="1" step="0.05" value="0.25" />
+          <span>여유 거리(마진)</span><input id="marginRatio" type="range" min="0" max="0.5" step="0.01" value="0.05" />
+        </div>
+        <div class="toggle" style="margin-top:6px;">
+          <input id="hemiUp" type="checkbox" checked />
+          <label for="hemiUp">위쪽 반구만(아래 방향 금지, dir.y ≥ 0)</label>
+        </div>
+        <div class="toggle" style="margin-top:6px;">
+          <input id="clampGround" type="checkbox" checked />
+          <label for="clampGround">지표면 아래 클램프(폭발 후 목표 y ≥ ground)</label>
+        </div>
+        <div class="subtle" style="margin-top:6px;">
+          <b>겹침 방지</b>: 파트의 바운딩 구와 마진을 사용하여 폭발 목표점을 단계 전역에서 조정합니다.
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <button id="runAnnotate">자동 주석 실행</button>
+          <button id="saveJson">주석 JSON 내보내기</button>
+          <input id="loadJson" type="file" accept=".json" style="display:none;" />
+          <button id="loadJsonBtn">주석 JSON 불러오기</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <label>단계 제어</label>
+        <div class="row">
+          <button id="prevStep">이전 단계</button>
+          <button id="nextStep">다음 단계</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <label>단계 재생</label>
+        <div id="stepDurBox" class="grid" style="margin-bottom:8px;"></div>
+        <div class="row">
+          <button id="playSeqFwd">정방향 재생 (0 → 마지막)</button>
+          <button id="playSeqBack">역방향 재생 (마지막 → 0)</button>
+        </div>
+        <div class="muted" style="margin-top:6px;">각 단계의 지속(ms)을 설정하세요.</div>
+      </div>
+    </aside>
+
+    <section id="viewport">
+      <canvas id="renderer"></canvas>
+      <div id="tags"></div>
+    </section>
+
+    <footer>
+      <div class="muted">월드좌표 분해 / 360° 확산 / 지면 방지 / 단계 트윈 / <b>겹침 방지</b> / JSON I/O</div>
+      <div class="muted">© Three.js r147</div>
+    </footer>
+  </div>
+
+  <script>
+    // ----- Renderer/Scene/Camera -----
+    const canvas = document.getElementById('renderer');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xF7F7F8);
+
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
+    camera.position.set(3.5, 2.5, 5.5);
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x404040, 1.0);
+    const dir = new THREE.DirectionalLight(0xffffff, 1.1); dir.position.set(5,8,5);
+    scene.add(hemi, dir);
+
+    // ground
+    const ground = new THREE.Mesh(
+      new THREE.CylinderGeometry(6, 6, 0.2, 64),
+      new THREE.MeshStandardMaterial({ color: 0xeeeeee, metalness: 0.1, roughness: 0.9 })
+    );
+    ground.position.y = -0.6; scene.add(ground);
+    ground.geometry.computeBoundingBox();
+    const groundTopY = ground.position.y + (ground.geometry.boundingBox.max.y || 0.1);
+
+    // state
+    const parts = [];
+    let root = null;
+    let sceneCenter = new THREE.Vector3();
+    let boundSphere = { radius: 0 };
+    window.__steps = [];     // Array< Array<partId> >, length = N
+    window.__durations = []; // Array<number>, length = N
+    let currentStep = -1;    // -1 = assembled
+    let isAnimating = false;
+
+    function updateStepIndicator(){
+      const el = document.getElementById('stepIndicator');
+      if (el) el.textContent = `Step: ${currentStep}`;
+    }
+
+    // UI refs
+    const ui = {
+      partCount: document.getElementById('partCount'),
+      boundR: document.getElementById('boundR'),
+      stepCount: document.getElementById('stepCount'),
+      strategy: document.getElementById('strategy'),
+      explodeMag: document.getElementById('explodeMag'),
+      randAmt: document.getElementById('randAmt'),
+      marginRatio: document.getElementById('marginRatio'),
+      hemiUp: document.getElementById('hemiUp'),
+      clampGround: document.getElementById('clampGround'),
+      stepDurBox: document.getElementById('stepDurBox')
+    };
+
+    // ----- Helpers -----
+    function liftAboveGround(object, clearance=0.01){
+      object.updateWorldMatrix(true, true);
+      const box = new THREE.Box3().setFromObject(object);
+      const minY = box.min.y;
+      const dy = (groundTopY + clearance) - minY;
+      if (dy > 0){
+        object.position.y += dy;
+        object.updateWorldMatrix(true, true);
+      }
+    }
+
+    // ----- Load glTF -----
+    const loader = new THREE.GLTFLoader();
+    document.getElementById('file').addEventListener('change', (e)=>{
+      const file = e.target.files[0]; if (!file) return;
+      const url = URL.createObjectURL(file);
+      loader.load(url, (gltf)=>{
+        if (root) scene.remove(root);
+        root = gltf.scene;
+        scene.add(root);
+        liftAboveGround(root, 0.01);  // ensure above ground
+        collectParts(root);
+        fitView();
+        annotateAuto();
+        setStepInstant(-1);
+      });
+    });
+
+    function collectParts(root){
+      parts.splice(0, parts.length);
+      root.updateWorldMatrix(true, true);
+      const bbox = new THREE.Box3().setFromObject(root);
+      const sphere = bbox.getBoundingSphere(new THREE.Sphere());
+      sceneCenter.copy(sphere.center);
+      boundSphere.radius = sphere.radius;
+      document.getElementById('boundR').textContent = sphere.radius.toFixed(2);
+
+      root.traverse(obj => {
+        if (obj.isMesh) {
+          obj.updateWorldMatrix(true, true);
+          // store world bounding sphere radius for separation
+          if (!obj.geometry.boundingSphere) obj.geometry.computeBoundingSphere();
+          const scale = new THREE.Vector3();
+          obj.getWorldScale(scale);
+          const worldRadius = (obj.geometry.boundingSphere ? obj.geometry.boundingSphere.radius : 0.05) * Math.max(scale.x, scale.y, scale.z);
+
+          const worldPos = obj.getWorldPosition(new THREE.Vector3());
+          const localPos = obj.position.clone();
+          obj.userData._origPos = localPos;     // local space
+          obj.userData._worldOrig = worldPos;   // world space
+          obj.userData._worldRadius = worldRadius;
+          if (!obj.userData.partName) obj.userData.partName = obj.name || 'part';
+          if (!obj.userData.partId) obj.userData.partId = obj.uuid;
+          parts.push(obj);
+        }
+      });
+      ui.partCount.textContent = parts.length;
+    }
+
+    function fitView(){
+      if (!boundSphere.radius) return;
+      controls.target.copy(sceneCenter);
+      const dist = boundSphere.radius * 2.5;
+      camera.position.copy(sceneCenter.clone().add(new THREE.Vector3(dist, dist*0.7, dist)));
+      camera.near = Math.max(0.01, boundSphere.radius * 0.01);
+      camera.far = boundSphere.radius * 20;
+      camera.updateProjectionMatrix();
+    }
+
+    // --- tiny deterministic PRNG (for random360) ---
+    function seedFromString(s){
+      let h = 2166136261 >>> 0;
+      for (let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+      return h >>> 0;
+    }
+    function lcg(seed){ return () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967295; }; }
+    function randomUnitVector(rand){
+      const u = rand(); const v = rand();
+      const theta = 2*Math.PI*u;  const z = 2*v - 1;
+      const r = Math.sqrt(1 - z*z);
+      return new THREE.Vector3(r*Math.cos(theta), r*Math.sin(theta), z);
+    }
+
+    // ----- Separation solver -----
+    function solveSeparation(records, marginAbs, maxIter=5){
+      const n = records.length;
+      const v = new Array(n), L = new Array(n), c = new Array(n), r = new Array(n), s = new Array(n);
+      for (let i=0;i<n;i++){
+        const rec = records[i];
+        const p = rec.p;
+        const dir = rec.dir.clone();
+        L[i] = dir.length();
+        v[i] = dir.multiplyScalar(1 / (L[i] || 1)); // unit
+        c[i] = p.userData._worldOrig.clone();
+        r[i] = Math.max(0.001, p.userData._worldRadius || 0.05);
+        s[i] = 0;
+      }
+      const tmp = new THREE.Vector3();
+      for (let it=0; it<maxIter; it++){
+        let any = false;
+        for (let i=0;i<n;i++){
+          for (let j=i+1;j<n;j++){
+            const pi = tmp.copy(v[i]).multiplyScalar(L[i] + s[i]).add(c[i]);
+            const pj = v[j].clone().multiplyScalar(L[j] + s[j]).add(c[j]);
+            const d = pi.distanceTo(pj);
+            const need = (r[i] + r[j] + marginAbs) - d;
+            if (need > 0){
+              any = true;
+              // push outward: prioritise the smaller radius, else split
+              if (r[i] <= r[j]) s[i] += need;
+              else s[j] += need;
+            }
+          }
+        }
+        if (!any) break;
+      }
+      // apply extra offsets
+      for (let i=0;i<n;i++){
+        records[i].dir.copy(v[i]).multiplyScalar(L[i] + s[i]);
+      }
+    }
+
+    // ----- Auto Annotate -----
+    function annotateAuto(){
+      const N = parseInt(ui.stepCount.value, 10);
+      const strat = ui.strategy.value;
+      const magBase = parseFloat(ui.explodeMag.value) * (boundSphere.radius || 1);
+      const jitter = parseFloat(ui.randAmt.value);
+      const hemi = ui.hemiUp.checked;
+      const marginAbs = parseFloat(ui.marginRatio.value) * (boundSphere.radius || 1);
+
+      const records = parts.map(p => {
+        const worldPos = p.getWorldPosition(new THREE.Vector3());
+        const radial = worldPos.clone().sub(sceneCenter);
+        let key = 0;
+        if (strat === 'radial' || strat === 'random360') key = radial.length();
+        else if (strat === 'x') key = worldPos.x;
+        else if (strat === 'y') key = worldPos.y;
+        else if (strat === 'z') key = worldPos.z;
+
+        let dir;
+        if (strat === 'radial') {
+          dir = (radial.length() > 1e-6 ? radial.normalize() : new THREE.Vector3(0,1,0));
+          if (jitter > 0){
+            const rand = lcg(seedFromString(p.userData.partId));
+            const j = randomUnitVector(rand).multiplyScalar(jitter);
+            dir.add(j).normalize();
+          }
+        } else if (strat === 'random360') {
+          const rand = lcg(seedFromString(p.userData.partId));
+          dir = randomUnitVector(rand);
+        } else if (strat === 'x') {
+          dir = new THREE.Vector3(Math.sign(worldPos.x - sceneCenter.x) || 1, 0, 0);
+        } else if (strat === 'y') {
+          dir = new THREE.Vector3(0, Math.sign(worldPos.y - sceneCenter.y) || 1, 0);
+        } else if (strat === 'z') {
+          dir = new THREE.Vector3(0, 0, Math.sign(worldPos.z - sceneCenter.z) || 1);
+        }
+
+        if (hemi && dir.y < 0) dir.y = Math.abs(dir.y);
+
+        let scale = magBase;
+        if (jitter > 0){
+          const rand = lcg(seedFromString(p.userData.partId) ^ 0x9e3779b9);
+          const t = (rand()*2 - 1) * jitter;
+          scale = magBase * (1 + t);
+        }
+        dir = dir.multiplyScalar(scale);
+
+        return { p, key, dir };
+      });
+
+      // separation pass (global: all exploded parts)
+      solveSeparation(records, marginAbs, 6);
+
+      records.sort((a,b)=> a.key - b.key);
+      records.forEach((rec, idx) => {
+        const step = Math.min(N, Math.max(1, Math.ceil(((idx+1) / records.length) * N)));
+        rec.p.userData.step = step;
+        rec.p.userData.explodeDir = rec.dir.clone();
+      });
+
+      buildStepsIndex(N);
+      buildDurationInputs(N);
+      currentStep = -1;
+      updateStepIndicator();
+    }
+
+    function buildStepsIndex(N){
+      window.__steps = [];
+      for (let k=1;k<=N;k++){
+        window.__steps.push(parts.filter(p => p.userData.step === k).map(p => p.userData.partId));
+      }
+    }
+
+    function buildDurationInputs(N){
+      const box = ui.stepDurBox;
+      box.innerHTML = "";
+      if (!Array.isArray(window.__durations) || window.__durations.length !== N){
+        window.__durations = Array.from({length:N}, ()=>600);
+      }
+      for (let i=0;i<N;i++){
+        const label = document.createElement('div');
+        label.textContent = `Step ${i+1} (ms)`;
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '0';
+        input.value = String(window.__durations[i]);
+        input.addEventListener('change', ()=>{
+          const v = Math.max(0, parseInt(input.value||'0',10));
+          window.__durations[i] = v;
+        });
+        box.appendChild(label); box.appendChild(input);
+      }
+    }
+
+    // ----- Step helpers -----
+    function explodedSetFor(index){
+      const steps = window.__steps || []; const n = steps.length;
+      const clamped = Math.max(-1, Math.min(index, n-1));
+      const set = new Set();
+      if (clamped >= 0){
+        for (let s=0; s<=clamped; s++){ (steps[s]||[]).forEach(id => set.add(id)); }
+      }
+      return set;
+    }
+    function worldTargetFor(part, explodedSet){
+      const worldOrig = part.userData._worldOrig || part.getWorldPosition(new THREE.Vector3());
+      if (!explodedSet.has(part.userData.partId)) return worldOrig.clone();
+      const dir = (part.userData.explodeDir || new THREE.Vector3(0,1,0));
+      const tgt = worldOrig.clone().add(dir);
+      if (ui.clampGround.checked) tgt.y = Math.max(tgt.y, groundTopY + 0.001);
+      return tgt;
+    }
+
+    // ----- Instant set (no tween) -----
+    function setStepInstant(index){
+      const exploded = explodedSetFor(index);
+      parts.forEach(m => {
+        const parent = m.parent || scene;
+        const worldTarget = worldTargetFor(m, exploded);
+        const localTarget = parent.worldToLocal(worldTarget.clone());
+        m.position.copy(localTarget);
+      });
+      currentStep = Math.max(-1, Math.min(index, (window.__steps.length||1)-1));
+      updateStepIndicator();
+    }
+
+    // ----- Tween animation between steps -----
+    function easeInOut(t){ return t<0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
+
+    async function animateToStep(toIndex, duration){
+      if (isAnimating) return;
+      const fromIndex = currentStep;
+      const stepsLen = window.__steps.length;
+      const clampedTo = Math.max(-1, Math.min(toIndex, stepsLen-1));
+      if (clampedTo === fromIndex) return;
+
+      isAnimating = true;
+      const explodedFrom = explodedSetFor(fromIndex);
+      const explodedTo   = explodedSetFor(clampedTo);
+
+      const starts = new Map(), ends = new Map(), parents = new Map();
+      parts.forEach(m => {
+        const parent = m.parent || scene;
+        parents.set(m, parent);
+        starts.set(m, worldTargetFor(m, explodedFrom));
+        ends.set(m,   worldTargetFor(m, explodedTo));
+      });
+
+      const D = Math.max(0, duration|0);
+      const t0 = performance.now();
+
+      await new Promise(resolve => {
+        function loop(now){
+          const u = D === 0 ? 1 : Math.min(1, (now - t0) / D);
+          const e = easeInOut(u);
+          parts.forEach(m => {
+            const ws = starts.get(m), we = ends.get(m);
+            const w = ws.clone().lerp(we, e);
+            const parent = parents.get(m);
+            const local = parent.worldToLocal(w.clone());
+            m.position.copy(local);
+          });
+          if (u < 1) requestAnimationFrame(loop);
+          else resolve();
+        }
+        requestAnimationFrame(loop);
+      });
+
+      currentStep = clampedTo;
+      updateStepIndicator();
+      isAnimating = false;
+    }
+
+    // Prev/Next buttons
+    document.getElementById('prevStep').onclick = ()=> {
+      const target = currentStep - 1;
+      const dur = (currentStep >= 0 ? (window.__durations[currentStep] || 600) : 600);
+      animateToStep(target, dur);
+    };
+    document.getElementById('nextStep').onclick = ()=> {
+      const target = currentStep + 1;
+      const dur = (window.__durations[target] || 600);
+      animateToStep(target, dur);
+    };
+
+    // Playback with per-step durations
+    async function playForward(){
+      for (let i=0;i<window.__steps.length;i++){
+        await animateToStep(i, window.__durations[i] || 600);
+      }
+    }
+    async function playBackward(){
+      for (let i=window.__steps.length-1;i>=0;i--){
+        await animateToStep(i-1, window.__durations[i] || 600);
+      }
+    }
+    document.getElementById('playSeqFwd').onclick = playForward;
+    document.getElementById('playSeqBack').onclick = playBackward;
+
+    // Save/Load JSON (include durations)
+    document.getElementById('saveJson').onclick = ()=>{
+      const data = parts.map(p => ({
+        partId: p.userData.partId,
+        name: p.userData.partName || p.name,
+        step: p.userData.step || 1,
+        explodeDir: { x: p.userData.explodeDir?.x || 0, y: p.userData.explodeDir?.y || 0, z: p.userData.explodeDir?.z || 0 }
+      }));
+      const payload = { steps: window.__steps||[], durations: window.__durations||[], parts: data };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'annotation.json';
+      a.click();
+    };
+
+    document.getElementById('loadJsonBtn').onclick = ()=> document.getElementById('loadJson').click();
+    document.getElementById('loadJson').addEventListener('change', (e)=>{
+      const file = e.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        try {
+          const obj = JSON.parse(reader.result);
+          if (obj.parts){
+            const map = new Map(obj.parts.map(r => [r.partId, r]));
+            parts.forEach(p => {
+              const r = map.get(p.userData.partId);
+              if (r){
+                p.userData.step = r.step;
+                p.userData.explodeDir = new THREE.Vector3(r.explodeDir.x, r.explodeDir.y, r.explodeDir.z);
+              }
+            });
+          }
+          if (Array.isArray(obj.steps) && obj.steps.length){
+            window.__steps = obj.steps;
+          } else {
+            buildStepsIndex(parseInt(ui.stepCount.value,10));
+          }
+          if (Array.isArray(obj.durations) && obj.durations.length){
+            window.__durations = obj.durations.slice(0);
+          }
+          buildDurationInputs(window.__steps.length || parseInt(ui.stepCount.value,10));
+          setStepInstant(-1);
+          alert('주석 JSON 적용 완료');
+        } catch(e){ alert('JSON 파싱 실패: ' + e.message); }
+      };
+      reader.readAsText(file);
+    });
+
+    // Tag label (click select)
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let selected = null;
+    const tagsRoot = document.getElementById('tags');
+    function makeTag(){ const el = document.createElement('div'); el.className='tag'; tagsRoot.appendChild(el); return el; }
+    const tag = makeTag(); tag.style.display='none';
+
+    function onSelect(obj){ selected = obj; highlight(obj); updateTag(); }
+    function clearSelect(){ if (!selected) return; if (selected.material && selected.material.emissive) selected.material.emissive.setHex(0x000000); selected=null; tag.style.display='none'; }
+    function highlight(obj){
+      parts.forEach(p => { if (p.material && p.material.emissive) p.material.emissive.setHex(0x000000); });
+      if (!obj.material.emissive) obj.material.emissive = new THREE.Color(0x000000);
+      obj.material.emissive.setHex(0x555555);
+    }
+    function updateTag(){
+      if (!selected) return;
+      const proj = selected.getWorldPosition(new THREE.Vector3()).project(camera);
+      const x = (proj.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
+      const y = (-proj.y * 0.5 + 0.5) * renderer.domElement.clientHeight;
+      tag.style.transform = `translate(${x}px, ${y}px)`; tag.style.display='block';
+    }
+
+    // Resize/Render
+    function resize(){
+      const vp = document.getElementById('viewport');
+      const w = vp.clientWidth, h = vp.clientHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      updateTag();
+    }
+    new ResizeObserver(resize).observe(document.getElementById('app'));
+    resize();
+
+    function animate(){
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+  </script>
+</body>
+</html>
