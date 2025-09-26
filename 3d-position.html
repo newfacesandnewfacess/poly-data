@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-  <title>3D 분해/조립 뷰어 · 모바일 최적화</title>
+  <title>3D 분해/조립 뷰어 · 모바일 최적화(닫기 버튼)</title>
   <style>
     :root{
       --panel-w: 480px;
@@ -24,6 +24,10 @@
     #btnPanel { margin-left:auto; padding:8px 10px; border:var(--border); border-radius:10px; background:#fff; cursor:pointer; }
     #btnFit { padding:8px 10px; border:var(--border); border-radius:10px; background:#fff; cursor:pointer; }
     #panel { padding: 12px; border-right: var(--border); display: flex; flex-direction: column; gap: 12px; overflow:auto; background:#fff; }
+    .panel-head { position: sticky; top: 0; z-index: 5; display:none; align-items:center; justify-content:space-between;
+      background:#fff; padding: 8px 0 12px; border-bottom: var(--border); margin: -12px -12px 12px; padding-left:12px; padding-right:12px; }
+    .panel-head strong { font-size:14px; }
+    .panel-head button { padding:8px 10px; border:var(--border); border-radius:10px; background:#fff; cursor:pointer; }
     .card { border: var(--border); border-radius: var(--radius); padding: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.04); background:#fff; }
     label { font-size: 12px; color: #4b5563; display:block; margin-bottom: 6px; }
     input[type=range], input[type=number], input[type=text] { width: 100%; }
@@ -49,6 +53,7 @@
       #panel { position: fixed; top:0; right:0; bottom:0; width:min(92vw, var(--panel-w)); transform: translateX(100%);
         transition: transform .28s ease; z-index:50; box-shadow: var(--shadow); border-left: var(--border); border-right:none; }
       #panel.open { transform: translateX(0); }
+      .panel-head { display:flex; }
       #mbar { display:flex; }
       header { gap:8px; }
       #btnFit { display:none; }
@@ -70,6 +75,11 @@
     </header>
 
     <aside id="panel" aria-label="설정">
+      <div class="panel-head" role="toolbar" aria-label="패널 헤더">
+        <strong>설정</strong>
+        <button id="btnClosePanel" aria-label="설정 닫기">✕ 닫기</button>
+      </div>
+
       <div class="card">
         <label>glTF(.gltf/.glb) 업로드</label>
         <input id="file" type="file" accept=".gltf,.glb" />
@@ -79,7 +89,7 @@
         </div>
         <div class="muted" style="margin-top:6px;">첨부가 없으면 아래 기본 URL을 사용하거나, 상단 ⚙️로 열어 설정하세요.</div>
         <div class="urlrow" style="margin-top:6px;">
-          <input id="defaultUrl" type="text" value="https://raw.githubusercontent.com/newfacesandnewfacess/poly-data/main/edu/DN083R44ZSMK6QS4VBVDWGA00.glb" />
+          <input id="defaultUrl" type="text" placeholder="https://raw.githubusercontent.com/<owner>/<repo>/<branch>/edu/DN083R44ZSMK6QS4VBVDWGA00.glb" />
           <button id="btnLoadDefault">기본 로드</button>
         </div>
       </div>
@@ -228,6 +238,7 @@
       defaultUrl: document.getElementById('defaultUrl'),
       btnLoadDefault: document.getElementById('btnLoadDefault'),
       btnPanel: document.getElementById('btnPanel'),
+      btnClosePanel: document.getElementById('btnClosePanel'),
       panel: document.getElementById('panel'),
       btnFit: document.getElementById('btnFit'),
       mbar: document.getElementById('mbar'),
@@ -591,6 +602,23 @@
     };
     ui.mGear.onclick = ()=> togglePanel();
 
+    // Panel toggle
+    ui.btnPanel.addEventListener('click', ()=> togglePanel(true));
+    ui.btnClosePanel.addEventListener('click', ()=> togglePanel(false));
+    // ESC로도 닫기
+    window.addEventListener('keydown', (e)=>{
+      if (e.key === 'Escape') togglePanel(false);
+    });
+    // 기존: 패널 외부 탭시 닫기(모바일에서만)
+    document.addEventListener('click', (e)=>{
+      if (window.matchMedia('(max-width: 900px)').matches){
+        if (ui.panel.classList.contains('open')){
+          const inside = ui.panel.contains(e.target) || ui.btnPanel.contains(e.target);
+          if (!inside) togglePanel(false);
+        }
+      }
+    }, { capture: true });
+
     // JSON I/O
     document.getElementById('saveJson').onclick = ()=>{
       const data = parts.map(p => ({
@@ -683,18 +711,6 @@
     const ro = new ResizeObserver(()=>{ resize(); });
     ro.observe(document.getElementById('app'));
     resize();
-
-    // Panel toggle
-    ui.btnPanel.addEventListener('click', ()=> togglePanel());
-    // Close panel when tapping outside on mobile
-    document.addEventListener('click', (e)=>{
-      if (window.matchMedia('(max-width: 900px)').matches){
-        if (ui.panel.classList.contains('open')){
-          const inside = ui.panel.contains(e.target) || ui.btnPanel.contains(e.target);
-          if (!inside) togglePanel(false);
-        }
-      }
-    });
 
     // Render loop
     function animate(){
