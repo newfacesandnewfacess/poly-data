@@ -3,17 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>한자 게임 — 통합본 (다운로드 패키지) — v14</title>
+  <title>한자 게임 - v14</title>
   <style>
     :root{ --bg:#0f1220; --card:#171a2e; --accent:#7dd3fc; --accent2:#f472b6; --ok:#34d399; --bad:#ef4444; --text:#e5e7eb; }
     *{box-sizing:border-box}
     body{margin:0;font-family:system-ui,Segoe UI,Apple SD Gothic Neo,Pretendard,Arial,sans-serif;background:linear-gradient(180deg,#0f1220,#0b1020);color:var(--text)}
     .wrap{min-height:100dvh;display:grid;place-items:start center;padding:24px}
     .board{width:min(1100px,95vw);}
-    .header{display:grid;gap:16px;margin-bottom:18px}
+    .header{display:grid;gap:16px;margin-bottom:18px;    justify-items: center;}
     h1{font-size:28px;margin:0}
     .nav-row{display:flex;gap:10px;flex-wrap:wrap;justify-content: center}
-    .btn,button{cursor:pointer;border:0;border-radius:14px;width:80%;padding:12px 16px;background:var(--card);color:var(--text);transition:.2s;box-shadow:0 6px 20px rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.06)}
+	.modal-head .nav-row  {flex-wrap: nowrap;flex-direction: row; width: 80%;}
+	.header .nav-row  {width:80%;}
+	.header .nav-row  {flex-direction: column;}
+	
+    .btn,button{cursor:pointer;border:0;border-radius:14px;padding:12px 16px;background:var(--card);color:var(--text);transition:.2s;box-shadow:0 6px 20px rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.06)}
     .btn:hover{transform:translateY(-1.5px);filter:brightness(1.1)}
     .pill{background:rgba(255,255,255,.06);padding:8px 12px;border-radius:999px}
     .muted{opacity:.75}
@@ -74,13 +78,14 @@
   <div class="board">
     <div class="header">
       <h1>한자 게임</h1>
+	  <img src="https://c.tenor.com/GIlBnmnHkcEAAAAC/tenor.gif">
       <div class="nav-row" role="toolbar" aria-label="게임 메뉴">
         <button class="btn" data-open="#modal-rank">순위</button>
         <button class="btn" data-open="#modal-fast">빨리 맞추기</button>
         <button class="btn" data-open="#modal-paja">한자 파자</button>
         <button class="btn" data-open="#modal-learn">학습하기</button>
       </div>
-      <div class="muted">닫기/종료 시 메뉴 모달을 띄우지 않고, 모든 모달을 닫아 <b>초기 화면</b>으로 돌아갑니다.</div>
+     <!-- <div class="muted">닫기/종료 시 메뉴 모달을 띄우지 않고, 모든 모달을 닫아 <b>초기 화면</b>으로 돌아갑니다.</div> -->
     </div>
   </div>
 </div>
