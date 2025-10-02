@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>한자 게임 — 통합본 (다운로드 패키지) — v14</title>
+  <style>
+    :root{ --bg:#0f1220; --card:#171a2e; --accent:#7dd3fc; --accent2:#f472b6; --ok:#34d399; --bad:#ef4444; --text:#e5e7eb; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,Segoe UI,Apple SD Gothic Neo,Pretendard,Arial,sans-serif;background:linear-gradient(180deg,#0f1220,#0b1020);color:var(--text)}
+    .wrap{min-height:100dvh;display:grid;place-items:start center;padding:24px}
+    .board{width:min(1100px,95vw);}
+    .header{display:grid;gap:16px;margin-bottom:18px}
+    h1{font-size:28px;margin:0}
+    .nav-row{display:flex;gap:10px;flex-wrap:wrap;justify-content: center}
+    .btn,button{cursor:pointer;border:0;border-radius:14px;width:80%;padding:12px 16px;background:var(--card);color:var(--text);transition:.2s;box-shadow:0 6px 20px rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.06)}
+    .btn:hover{transform:translateY(-1.5px);filter:brightness(1.1)}
+    .pill{background:rgba(255,255,255,.06);padding:8px 12px;border-radius:999px}
+    .muted{opacity:.75}
+
+    dialog{border:1px solid rgba(255,255,255,.08);background:var(--card);color:var(--text);border-radius:16px;width:min(980px,95vw);padding:0;box-shadow:0 30px 120px rgba(0,0,0,.5)}
+    dialog::backdrop{background:rgba(0,0,0,.6)}
+    .modal-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.08)}
+    .modal-body{padding:16px}
+
+    .gamebar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+    .grid{display:grid;gap:10px}
+    .grid.locked{pointer-events:none;filter:grayscale(.2) opacity(.7)}
+    .card{aspect-ratio:1/1;display:grid;place-items:center;border-radius:14px;position:relative;background:linear-gradient(180deg,#1b1f3a,#171a2e);border:1px solid rgba(255,255,255,.08);font-size:clamp(18px,6vw,40px);cursor:pointer;user-select:none;overflow:hidden;transition:all .2s ease}
+    .card .han{font-weight:700;letter-spacing:.02em}
+    .card.correct{animation:shrink-out .35s ease forwards;border-color:rgba(52,211,153,.5)}
+    .card.wrong{animation:shake .4s ease;border-color:rgba(239,68,68,.6);background:#2a1520}
+    @keyframes shrink-out{to{transform:scale(.2);opacity:0}}
+    @keyframes shake{10%{transform:translateX(-4px)}20%{transform:translateX(4px)}30%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{background:#2a1520}100%{transform:none}}
+
+    .timebar{height:10px;background:rgba(255,255,255,.12);border-radius:999px;overflow:hidden}
+    .timebar>i{display:block;height:100%;width:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));transform-origin:left;}
+
+#learn-track{
+  display:flex;
+  gap:18px;
+  overflow:hidden;
+  will-change: transform;
+  transform: translateZ(0);
+  animation: marquee var(--marquee-dur,30s) linear infinite;
+}
+#learn-track::-webkit-scrollbar{ display:none; }
+#learn-track{ -ms-overflow-style:none; scrollbar-width:none; }
+/* 카드가 0폭으로 줄지 않게 */
+.slide{ flex:0 0 auto; min-width:260px; display:grid; place-items:center;
+        color:#e5e7eb; background:var(--card);
+        border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:18px; user-select:none; }
+.slide .han{ font-size:52px; line-height:1; }
+.slide .note{ opacity:1; margin-top:6px; text-align:center; }
+/* 마키 애니메이션 */
+@keyframes marquee{
+  from{ transform: translateX(0); }
+  to  { transform: translateX(calc(-1 * var(--loop-width, 0px))); }
+}
+    .slide-track::-webkit-scrollbar{ display:none; }
+    .slide-track{ -ms-overflow-style:none; scrollbar-width:none; }
+   
+      
+      
+    /* 로딩 */
+    .loading{display:inline-flex;align-items:center;gap:8px}
+    .spinner{width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.2);border-top-color:var(--accent);animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .hide{display:none}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="board">
+    <div class="header">
+      <h1>한자 게임</h1>
+      <div class="nav-row" role="toolbar" aria-label="게임 메뉴">
+        <button class="btn" data-open="#modal-rank">순위</button>
+        <button class="btn" data-open="#modal-fast">빨리 맞추기</button>
+        <button class="btn" data-open="#modal-paja">한자 파자</button>
+        <button class="btn" data-open="#modal-learn">학습하기</button>
+      </div>
+      <div class="muted">닫기/종료 시 메뉴 모달을 띄우지 않고, 모든 모달을 닫아 <b>초기 화면</b>으로 돌아갑니다.</div>
+    </div>
+  </div>
+</div>
+
+<!-- 1) 순위 -->
+<dialog id="modal-rank">
+  <div class="modal-head"><strong>순위</strong>
+    <div class="nav-row">
+      <select id="rank-mode" class="btn" aria-label="랭킹 모드">
+        <option value="fast">빨리맞추기</option>
+        <option value="paja">한자 파자</option>
+      </select>
+      <div id="rank-loading" class="loading hide"><i class="spinner"></i><span>불러오는 중…</span></div>
+      <button class="btn" id="refresh-rank">새로고침</button>
+      <button class="btn" data-close>닫기</button>
+    </div>
+  </div>
+  <div class="modal-body">
+    <table id="rank-table" style="width:100%;border-collapse:collapse">
+      <thead><tr><th>순위</th><th>이름</th><th>라운드</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</dialog>
+
+<!-- 2) 빨리 맞추기 -->
+<dialog id="modal-fast">
+  <div class="modal-head"><strong>빨리 맞추기</strong>
+    <div class="nav-row">
+      <span class="pill">기회 <b id="fast-life">3</b></span>
+      <span class="pill">라운드 <b id="fast-round">1</b></span>
+      <span class="pill" id="fast-timeleft">남은 시간: 120s</span>
+      <button class="btn" id="fast-restart">다시 시작</button>
+      <button class="btn" data-close>닫기</button>
+    </div>
+  </div>
+  <div class="modal-body">
+    <div class="gamebar">
+      <div id="fast-prompt" class="muted">예) <b>사내 남</b>을 찾아줘!</div>
+      <div class="pill" id="fast-target"></div>
+    </div>
+    <div class="grid" id="fast-grid"></div>
+    <div class="timebar" aria-label="남은 시간"><i id="fast-timefill"></i></div>
+  </div>
+</dialog>
+
+<!-- 3) 한자 파자 -->
+<dialog id="modal-paja">
+  <div class="modal-head"><strong>한자 파자</strong>
+    <div class="nav-row">
+      <span class="pill">기회 <b id="paja-life">3</b></span>
+      <span class="pill">라운드 <b id="paja-round">1</b></span>
+      <span class="pill" id="paja-timeleft">남은 시간: 120s</span>
+      <button class="btn" id="paja-restart">다시 시작</button>
+      <button class="btn" data-close>닫기</button>
+    </div>
+  </div>
+  <div class="modal-body">
+    <div class="gamebar">
+      <div id="paja-prompt" class="muted">예) <b>밭 전</b> + <b>힘 력</b> = ?</div>
+     // <div class="pill" id="paja-target"></div>
+    </div>
+    <div class="grid" id="paja-grid"></div>
+    <div class="timebar"><i id="paja-timefill"></i></div>
+  </div>
+</dialog>
+
+<!-- 4) 학습하기 -->
+<dialog id="modal-learn">
+  <div class="modal-head"><strong>학습하기</strong>
+    <div class="nav-row">
+      <button class="btn" id="reshuffle-learn">순서 섞기</button>
+      <button class="btn" data-close>닫기</button>
+    </div>
+  </div>
+  <div class="modal-body">
+    <div class="slide-track" id="learn-track"></div>
+  </div>
+</dialog>
+
+<!-- 5) 결과 -->
+<dialog id="modal-result">
+  <div class="modal-head"><strong id="result-title">게임 종료</strong><div class="nav-row"><button class="btn" data-close>닫기</button></div></div>
+  <div class="modal-body">
+    <div id="result-summary" class="muted" style="margin-bottom:10px"></div>
+    <div id="result-rank-wrap" class="hide">
+      <div style="margin:6px 0 10px 0">현재 순위: <b id="result-rank" class="ok"></b></div>
+      <table style="width:100%;border-collapse:collapse"><thead><tr><th>순위</th><th>이름</th><th>라운드</th></tr></thead><tbody id="result-table"></tbody></table>
+    </div>
+    <div class="nav-row" style="margin-top:12px"><button class="btn" id="result-restart">다시 시작</button><button class="btn" id="result-menu">메인으로</button></div>
+  </div>
+</dialog>
+
+<script>
+// ====== 설정 ======
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzDTlNoYdGWc6mdGL_Sk9NU-YNeTxQaq0UtUdNyqSmEPZC16CeX6-c0bAuot7RQl0k/exec"; // ✨ Apps Script 웹앱 URL 입력
+const BASE_TIME = 10000;
+const MIN_TIME  = 4000;
+function timeForRound(round){ const dec = Math.max(0, round-10) * 1000; return Math.max(MIN_TIME, BASE_TIME - dec); }
+
+const $=q=>document.querySelector(q);
+const rand=n=>Math.floor(Math.random()*n);
+const shuffle=a=>a.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).map(x=>x[1]);
+
+const HAN_LIST=[
+  {han:'男',yom:'남',mean:'사내 남',parts:['田','力']},
+  {han:'林',yom:'림',mean:'숲 림',parts:['木','木']},
+  {han:'明',yom:'명',mean:'밝을 명',parts:['日','月']},
+  {han:'休',yom:'휴',mean:'쉴 휴',parts:['亻','木']},
+  {han:'好',yom:'호',mean:'좋을 호',parts:['女','子']},
+  {han:'語',yom:'어',mean:'말씀 어',parts:['言','五','口']},
+  {han:'校',yom:'교',mean:'학교 교',parts:['木','交']},
+  {han:'国',yom:'국',mean:'나라 국',parts:['囗','玉']},
+  {han:'田',yom:'전',mean:'밭 전',parts:['田']},
+  {han:'力',yom:'력',mean:'힘 력',parts:['力']},
+  {han:'心',yom:'심',mean:'마음 심',parts:['心']},
+  {han:'水',yom:'수',mean:'물 수',parts:['水']},
+  {han:'火',yom:'화',mean:'불 화',parts:['火']},
+  {han:'山',yom:'산',mean:'뫼 산',parts:['山']},
+  {han:'木',yom:'목',mean:'나무 목',parts:['木']},
+  {han:'口',yom:'구',mean:'입 구',parts:['口']},
+  {han:'目',yom:'목',mean:'눈 목',parts:['目']},
+  {han:'耳',yom:'이',mean:'귀 이',parts:['耳']},
+  {han:'手',yom:'수',mean:'손 수',parts:['手']},
+  {han:'日',yom:'일',mean:'날 일',parts:['日']},
+  {han:'月',yom:'월',mean:'달 월',parts:['月']},
+  {han:'女',yom:'녀',mean:'여자 녀',parts:['女']},
+  {han:'子',yom:'자',mean:'아들 자',parts:['子']},
+];
+
+// ====== 랭킹 (캐시 + 서버) ======
+const rankCache={fast:[],paja:[]};
+const rankTableBody=$("#rank-table tbody");
+const rankLoading=$("#rank-loading");
+const rankModeSel=$("#rank-mode");
+
+function renderRankTable(rows){
+  rankTableBody.innerHTML='';
+  rows.slice(0,5).forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${i+1}</td><td>${r.name||'—'}</td><td>${r.rounds}</td>`;
+    rankTableBody.appendChild(tr);
+  });
+}
+async function fetchRankFromServer(mode){
+  if(!GAS_URL) return [];
+  try{
+    rankLoading.classList.remove('hide');
+    const res=await fetch(GAS_URL+`?action=list&mode=${encodeURIComponent(mode)}`);
+    return res.ok?await res.json():[];
+  }catch(e){ return []; }
+  finally{ rankLoading.classList.add('hide'); }
+}
+async function prefetchRanks(){
+  for(const m of ['fast','paja']){
+    const rows=await fetchRankFromServer(m);
+    if(rows.length) rankCache[m]=rows.slice(0,5);
+  }
+}
+function showRank(mode){
+  renderRankTable(rankCache[mode]||[]);
+  fetchRankFromServer(mode).then(rows=>{
+    if(rows.length){
+      rankCache[mode]=rows.slice(0,5);
+      if(rankModeSel.value===mode) renderRankTable(rankCache[mode]);
+    }
+  });
+}
+$("#refresh-rank").addEventListener('click',()=>showRank(rankModeSel.value));
+rankModeSel.addEventListener('change',()=>renderRankTable(rankCache[rankModeSel.value]||[]));
+
+// ====== 공통 유틸 ======
+function stopTimer(state){ if(state?.timer) cancelAnimationFrame(state.timer); }
+function lockGrid(el,lock){ el?.classList[lock?'add':'remove']('locked'); }
+function setupGrid(el,count){ const cols=Math.min(8,Math.ceil(Math.sqrt(count))); el.style.gridTemplateColumns=`repeat(${cols},1fr)`; }
+function nameOf(part){ const map={'田':'밭 전','力':'힘 력','木':'나무 목','日':'해 일','月':'달 월','女':'여자 녀','子':'아들 자','言':'말씀 언','口':'입 구'}; return map[part]||part; }
+function returnToIdle(){
+  document.querySelectorAll('dialog[open]')?.forEach(d=>d.close());
+  stopTimer(fast.state); stopTimer(paja.state);
+  ["fast-grid","paja-grid"].forEach(id=>{ const el=document.getElementById(id); if(el){ el.innerHTML=''; el.classList.add('locked'); } });
+}
+
+// ====== FAST ======
+const fast={lifeEl:$("#fast-life"),roundEl:$("#fast-round"),grid:$("#fast-grid"),timeFill:$("#fast-timefill"),timeLeft:$("#fast-timeleft"),promptEl:$("#fast-prompt"),targetEl:$("#fast-target"),state:{life:3,round:1,timer:null,timeMs:BASE_TIME,startedAt:0,over:false,target:null,left:0}};
+function startFast(reset=true){
+  if(reset){ stopTimer(fast.state); fast.state={life:3,round:1,timer:null,timeMs:BASE_TIME,startedAt:0,over:false,target:null,left:0}; }
+  fast.state.timeMs=timeForRound(fast.state.round);
+  fast.timeLeft.textContent=`남은 시간: ${Math.round(fast.state.timeMs/1000)}s`;
+  fast.lifeEl.textContent=fast.state.life; fast.roundEl.textContent=fast.state.round;
+  const base=4+(fast.state.round-1)*4, count=Math.min(40,base);
+  const target=HAN_LIST[rand(HAN_LIST.length)]; fast.state.target=target;
+  const [m1,m2]=(target.mean||'').split(' '); fast.promptEl.innerHTML=`예) <b>${m1} ${m2||''}</b>을 찾아줘!`; //fast.targetEl.textContent=`정답: ${(m2||target.mean)}(${target.han})`;
+  const pool=shuffle(HAN_LIST).filter(x=>x.han!==target.han).slice(0,count-1);
+  const cards=shuffle([target,...pool]);
+  fast.grid.innerHTML=''; setupGrid(fast.grid,count); fast.state.left=1; lockGrid(fast.grid,false);
+  cards.forEach(item=>{
+    const el=document.createElement('button'); el.className='card'; el.innerHTML=`<span class="han">${item.han}</span>`;
+    el.addEventListener('click',()=>{
+      if(fast.state.over) return;
+      if(item.han===target.han){ el.classList.add('correct'); fast.state.left--; setTimeout(()=>{el.remove(); if(fast.state.left<=0) nextRoundFast();},280); }
+      else { el.classList.add('wrong'); setTimeout(()=>el.classList.remove('wrong'),380); damageFast(); }
+    });
+    fast.grid.appendChild(el);
+  });
+  startTimerFast();
+}
+function startTimerFast(){
+  stopTimer(fast.state);
+  const total=fast.state.timeMs; fast.state.startedAt=performance.now();
+  const loop=t=>{
+    const left=Math.max(0,total-(t-fast.state.startedAt));
+    fast.timeFill.style.transform=`scaleX(${left/total})`;
+    fast.timeLeft.textContent=`남은 시간: ${Math.ceil(left/1000)}s`;
+    if(left<=0) return gameoverFast();
+    fast.state.timer=requestAnimationFrame(loop);
+  };
+  fast.state.timer=requestAnimationFrame(loop);
+}
+function damageFast(){ if(fast.state.over) return; fast.state.life--; fast.lifeEl.textContent=fast.state.life; if(fast.state.life<=0) return gameoverFast(); }
+function nextRoundFast(){ fast.state.round++; fast.roundEl.textContent=fast.state.round; startFast(false); }
+function gameoverFast(){ if(fast.state.over) return; fast.state.over=true; stopTimer(fast.state); lockGrid(fast.grid,true); finishGame('fast', fast.state.round-1); }
+$("#fast-restart").addEventListener('click',()=>startFast(true));
+
+// ====== PAJA ======
+const paja={lifeEl:$("#paja-life"),roundEl:$("#paja-round"),grid:$("#paja-grid"),timeFill:$("#paja-timefill"),timeLeft:$("#paja-timeleft"),promptEl:$("#paja-prompt"),targetEl:$("#paja-target"),state:{life:3,round:1,timer:null,timeMs:BASE_TIME,startedAt:0,over:false,target:null}};
+function startPaja(reset=true){
+  if(reset){ stopTimer(paja.state); paja.state={life:3,round:1,timer:null,timeMs:BASE_TIME,startedAt:0,over:false,target:null}; }
+  paja.state.timeMs=timeForRound(paja.state.round);
+  paja.timeLeft.textContent=`남은 시간: ${Math.round(paja.state.timeMs/1000)}s`;
+  paja.lifeEl.textContent=paja.state.life; paja.roundEl.textContent=paja.state.round;
+  const target=HAN_LIST[rand(HAN_LIST.length)]; paja.state.target=target;
+  paja.promptEl.innerHTML = `${target.parts.map(x=>`<b>${nameOf(x)}</b>`).join(' + ')} = ?`;
+    // paja.targetEl.textContent=`정답: ${target.han} (${target.mean})`;
+  const count=40; const items=shuffle([target,...shuffle(HAN_LIST).filter(x=>x.han!==target.han).slice(0,count-1)]);
+  paja.grid.innerHTML=''; setupGrid(paja.grid,count); lockGrid(paja.grid,false);
+  items.forEach(item=>{
+    const el=document.createElement('button'); el.className='card'; el.innerHTML=`<span class="han">${item.han}</span>`;
+    el.addEventListener('click',()=>{
+      if(paja.state.over) return;
+      if(item.han===target.han){ el.classList.add('correct'); setTimeout(()=>{el.remove(); nextRoundPaja();},280); }
+      else { el.style.transition='transform .18s ease'; el.style.transform='scale(.7)'; setTimeout(()=>{el.style.transform='scale(1)';},180); damagePaja(); }
+    });
+    paja.grid.appendChild(el);
+  });
+  startTimerPaja();
+}
+function startTimerPaja(){
+  stopTimer(paja.state);
+  const total=paja.state.timeMs; paja.state.startedAt=performance.now();
+  const loop=t=>{
+    const left=Math.max(0,total-(t-paja.state.startedAt));
+    paja.timeFill.style.transform=`scaleX(${left/total})`;
+    paja.timeLeft.textContent=`남은 시간: ${Math.ceil(left/1000)}s`;
+    if(left<=0) return gameoverPaja();
+    paja.state.timer=requestAnimationFrame(loop);
+  };
+  paja.state.timer=requestAnimationFrame(loop);
+}
+function damagePaja(){ if(paja.state.over) return; paja.state.life--; paja.lifeEl.textContent=paja.state.life; if(paja.state.life<=0) return gameoverPaja(); }
+function nextRoundPaja(){ paja.state.round++; paja.roundEl.textContent=paja.state.round; startPaja(false); }
+function gameoverPaja(){ if(paja.state.over) return; paja.state.over=true; stopTimer(paja.state); lockGrid(paja.grid,true); finishGame('paja', paja.state.round-1); }
+$("#paja-restart").addEventListener('click',()=>startPaja(true));
+
+
+
+/*************************************************
+* 4) 학습하기 — 슬라이드
+*************************************************/
+const learnTrack = document.getElementById('learn-track');
+function renderLearn(){
+learnTrack.innerHTML='';
+const items = shuffle([...HAN_LIST]);
+items.forEach(({han,yom,mean})=>{
+const el = document.createElement('div'); el.className='slide';
+el.innerHTML = `<div class="han">${han}</div><div class="note">${yom} · ${mean}</div>`;
+learnTrack.appendChild(el);
+});
+// 자동 슬라이드 애니메이션
+let sc=0; const step=1; // px per frame
+function tick(){
+sc+=step; learnTrack.scrollLeft = sc;
+if(sc >= learnTrack.scrollWidth - learnTrack.clientWidth) sc = 0;
+requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+}
+
+
+document.getElementById('reshuffle-learn').addEventListener('click',renderLearn);
+
+// ====== 결과 & 저장 ======
+const resultDlg=$("#modal-result"), resultTitle=$("#result-title"), resultSum=$("#result-summary"), resultRankWrap=$("#result-rank-wrap"), resultRank=$("#result-rank"), resultTbody=$("#result-table");
+$("#result-menu").addEventListener('click',()=>{ resultDlg.close(); returnToIdle(); });
+$("#result-restart").addEventListener('click',()=>{ const m=resultDlg.getAttribute('data-mode'); resultDlg.close(); if(m==='fast'){ $("#modal-fast").showModal(); startFast(true);} else { $("#modal-paja").showModal(); startPaja(true);} });
+
+function computeRank(list,candidate){
+  const mix=[...list,candidate].sort((a,b)=>b.rounds-a.rounds || (a.ts||0)-(b.ts||0)).slice(0,5);
+  const idx=mix.findIndex(x=>x===candidate);
+  return { list: mix, rank: idx+1 };
+}
+async function finishGame(mode, rounds){
+  const list=rankCache[mode]||[];
+  const worst=list[4]?.rounds||0;
+  let saved=false, candidate=null;
+  if(rounds>worst){
+    const name=prompt('상위 5위 진입! 이름을 입력하세요');
+    if(name){
+      candidate={mode,name,rounds,ts:Date.now()};
+      const {list:mix,rank}=computeRank(list,candidate);
+      rankCache[mode]=mix; saved=true;
+      resultRankWrap.classList.remove('hide'); resultRank.textContent=rank+'위'; resultTbody.innerHTML='';
+      mix.forEach((r,i)=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${i+1}</td><td>${r.name}</td><td>${r.rounds}</td>`; resultTbody.appendChild(tr); });
+      if(GAS_URL){
+        try{ await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'add',payload:candidate})}); }catch(e){ /* ignore */ }
+      }
+    }
+  }
+  if(!saved){ resultRankWrap.classList.add('hide'); resultTbody.innerHTML=''; }
+  resultDlg.setAttribute('data-mode',mode); resultTitle.textContent=(mode==='fast'?'빨리 맞추기':'한자 파자')+' — 게임 종료'; resultSum.textContent='최종 라운드: '+rounds; resultDlg.showModal();
+}
+
+// 모달 열기 쪽 (기존)
+document.querySelector('[data-open="#modal-learn"]')
+  ?.addEventListener('click', ()=> renderLearn());
+
+
+// ====== 모달 열기/닫기 ======
+for(const el of document.querySelectorAll('[data-open]')) el.addEventListener('click',()=>{
+  const sel=el.getAttribute('data-open'); const dlg=document.querySelector(sel); dlg.showModal();
+  if(sel==="#modal-fast") startFast(true);
+  if(sel==="#modal-paja") startPaja(true);
+  if(sel==="#modal-learn") renderLearn();
+  if(sel==="#modal-rank") showRank(rankModeSel.value);
+});
+for(const el of document.querySelectorAll('[data-close]')) el.addEventListener('click',e=>{
+  const dlg=e.target.closest('dialog'); dlg?.close();
+  if(dlg && (dlg.id==='modal-fast' || dlg.id==='modal-paja')) returnToIdle();
+});
+
+// ====== 최초 작업 ======
+prefetchRanks();
+</script>
+</body>
+</html>
