@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>공부타이머 — 확장(리더보드/강조) — 질문자 기준</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{--container-w:1100px}
+  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans KR",Arial,sans-serif;margin:0;background:#f4f5f7;color:#111827}
+  .container{max-width:var(--container-w);margin:0 auto;padding:0 20px 40px}
+  .card{background:#fff;border-radius:16px;box-shadow:0 6px 24px rgba(0,0,0,.06);padding:22px;overflow:hidden}
+  .grid{display:grid;gap:16px}.grid-2{grid-template-columns:1fr 1fr}
+  .chart-box{position:relative;width:100%;max-width:520px;margin:0 auto;height:clamp(240px,40vw,480px)}
+  .chart-box canvas{width:100% !important;height:100% !important;display:block}
+  .table{width:100%;border-collapse:collapse}
+  .table th,.table td{border:1px solid #e5e7eb;padding:10px 12px;text-align:center;white-space:nowrap}
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .btn{padding:10px 14px;border-radius:10px;border:0;background:#2563eb;color:#fff;font-weight:700;cursor:pointer}
+  .btn.secondary{background:#6b7280}.btn.ghost{background:#fff;border:1px solid #e5e7eb;color:#111827}
+  .input{flex:1;min-width:80px;padding:10px 12px;border-radius:10px;border:1px solid #e5e7eb}
+  .clock-area{text-align:center} #digitalClock{font-size:clamp(28px,8vw,64px);font-weight:800}
+  .badge{padding:6px 10px;border-radius:999px;border:1px solid #e5e7eb;background:#fff}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:50}
+  .modal .sheet{background:#fff;border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.2);padding:18px;max-width:380px;width:95%}
+  .toggle.active{background:#111827;color:#fff}
+  .me{background:#fee2e2;color:#b91c1c}
+  #study{display:none;}
+  @media (max-width:960px){.grid-2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main class="container">
+  <!-- 대시보드 -->
+  <section id="dash" class="grid card grid-2">
+    <div>
+      <h3>시간 배분(원형 그래프)</h3>
+      <div class="chart-box"><canvas id="pie"></canvas></div>
+    </div>
+    <div>
+      <h3>항목/누적시간</h3>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>항목</th><th>누적시간</th><th>순위</th><th>독한놈들</th></tr></thead>
+          <tbody id="itemTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="plannerCard" class="card" style="margin-top:14px;">
+    <h2 style="text-align:center; margin:0 0 8px;">오늘은 뭘 할꺼야?</h2>
+    <div class="row">
+      <input id="itemInput" class="input" placeholder="항목 입력" />
+      <select id="itemSelect" class="input" style="max-width:220px"></select>
+      <button id="addItem" class="btn" type="button">추가</button>
+      <button id="studyGo" class="btn" type="button" style="width:100%">▶ 공부하기</button>
+    </div>
+  </section>
+
+  <!-- 공부 화면 -->
+  <section id="study" style="margin-top:15px">
+    <div class="row" style="justify-content:space-between;">
+      <div class="row">
+        <span id="activeItem" class="badge">현재: -</span>
+        <button id="btnAnalog" class="btn ghost toggle" type="button">아날로그</button>
+        <button id="btnDigital" class="btn ghost toggle" type="button">디지털</button>
+      </div>
+      <button id="toDash" class="btn secondary" type="button" style="display:none">대시보드</button>  
+    </div>
+
+    <div class="clock-area" style="margin:8px 0 16px;">
+      <div id="digitalClock">00:00:00</div>
+      <canvas id="analogClock" width="260" height="260" style="display:none;margin:0 auto;"></canvas>
+	  <img src="https://31.media.tumblr.com/f4052ec68516abe096317253967e9cd5/tumblr_inline_msvvrdr0xZ1qz4rgp.gif" style="margin-top:20px;wdith:100%; border-radius:15px">
+    </div>
+
+    <h3>현재 공부하는 사람</h3>
+    <div class="table-wrap">
+      <table class="table"><thead><tr><th>순위</th><th>이름</th><th>항목</th><th>누적(분)</th></tr></thead><tbody id="liveBody"></tbody></table>
+    </div>
+
+    <div class="row" style="justify-content:center;margin:12px 0 24px;">
+      <button id="stopBtn" class="btn" type="button" style="background:#ef4444">중지</button>
+    </div>
+  </section>
+</main>
+
+<!-- 모달 -->
+<div id="modal" class="modal">
+  <div class="sheet">
+    <h3 style="margin:0 0 8px;">세션 요약</h3>
+    <div id="sessionText" style="margin-bottom:12px; font-weight:700;">이번 공부 시간: 00:00:00</div>
+    <div class="row" style="justify-content:flex-end;">
+      <button id="keepGoing" class="btn ghost" type="button">계속</button>
+      <button id="finish" class="btn" type="button" style="background:#111827">그만</button>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const $=s=>document.querySelector(s);
+
+  // 데이터(초) + 로컬스토리지 + 리더보드 샘플
+  const studyData={ items: JSON.parse(localStorage.getItem('itemsSec')||'{}') };
+  const save=()=>localStorage.setItem('itemsSec', JSON.stringify(studyData.items));
+  let currentItem=null, myName='나';
+  const sampleNames=['민준','서연','지호','서준','하윤','도윤','지우','서윤'];
+  let liveUsers = sampleNames.map(n=>({name:n,item:'국어',minutes:40+Math.floor(Math.random()*300)}));
+
+  const pad=n=>String(n).padStart(2,'0');
+  const fmtHMS=s=>`${pad(Math.floor(s/3600))}:${pad(Math.floor((s%3600)/60))}:${pad(s%60)}`;
+
+  // 차트/표
+  let pieChart=null;
+  function updatePieChart(items){
+    const ent=Object.entries(items), labels=ent.map(e=>e[0]), data=ent.map(e=>e[1]), total=data.reduce((a,b)=>a+b,0);
+    const ctx=document.getElementById('pie').getContext('2d'); if(pieChart) pieChart.destroy();
+    if(total===0||ent.length===0){
+      pieChart=new Chart(ctx,{type:'pie',data:{labels:['데이터 없음'],datasets:[{data:[1],backgroundColor:['#e5e7eb']}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'},tooltip:{enabled:false}}}});
+    }else{
+      pieChart=new Chart(ctx,{type:'pie',data:{labels,datasets:[{data,backgroundColor:['#3b82f6','#ef4444','#10b981','#f59e0b','#8b5cf6','#ec4899','#06b6d4','#84cc16']}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}});
+    }
+  }
+  function moreThanMeCount(item, myMin){
+    return liveUsers.filter(u=>u.item===item && u.minutes>myMin).length;
+  }
+  function loadDashboard(){
+    const tbody=$('#itemTbody'); tbody.innerHTML='';
+    const rows=Object.entries(studyData.items).sort((a,b)=>b[1]-a[1]);
+    if(rows.length===0){ tbody.innerHTML='<tr><td colspan="4">항목을 추가해주세요</td></tr>'; }
+    else rows.forEach(([name,sec],idx)=>{ const myMin=Math.floor(sec/60); const more=moreThanMeCount(name, myMin);
+      const tr=document.createElement('tr'); tr.innerHTML=`<td>${name}</td><td>${fmtHMS(sec)}</td><td>${idx+1}</td><td>${more}</td>`; tbody.appendChild(tr); });
+    updatePieChart(studyData.items);
+    fillSelect(); // ✅ 표 갱신 시 셀렉트도 동기화
+  }
+
+  // 스톱워치 & 시계
+  const $digital=$('#digitalClock'), $analog=$('#analogClock');
+  const $btnDigital=$('#btnDigital'), $btnAnalog=$('#btnAnalog');
+  let mode='digital', timer=null, startAt=0, elapsed=0;
+
+  function showDigital(){ mode='digital'; $digital.style.display='block'; $analog.style.display='none'; $btnDigital.classList.add('active'); $btnAnalog.classList.remove('active'); }
+  function showAnalog(){ mode='analog';  $digital.style.display='none';  $analog.style.display='block'; $btnAnalog.classList.add('active');  $btnDigital.classList.remove('active'); drawAnalog(elapsed); }
+  $btnDigital.onclick=showDigital; $btnAnalog.onclick=showAnalog;
+
+  function tick(){ elapsed=Math.floor((Date.now()-startAt)/1000); $digital.textContent=fmtHMS(elapsed); if($analog.style.display!=='none') drawAnalog(elapsed); }
+  function startStopwatch(){ if(timer) return; startAt=Date.now()-elapsed*1000; timer=setInterval(tick,250); }
+  function stopStopwatch(){ clearInterval(timer); timer=null; }
+  function drawAnalog(sec){ const c=$analog,x=c.getContext('2d'); const w=c.width/(window.devicePixelRatio||1), r=w/2; x.clearRect(0,0,w,w); x.save(); x.translate(r,r);
+    x.beginPath(); x.arc(0,0,r-4,0,Math.PI*2); x.lineWidth=6; x.strokeStyle='#111827'; x.stroke();
+    for(let i=0;i<60;i++){ x.rotate(Math.PI/30); x.beginPath(); x.moveTo(r-12,0); x.lineTo(r-6,0); x.lineWidth=i%5?2:4; x.strokeStyle=i%5?'#9ca3af':'#111827'; x.stroke(); }
+    const h=Math.floor(sec/3600)%12,m=Math.floor(sec%3600/60),s=sec%60; const ah=(Math.PI/6)*(h+m/60), am=(Math.PI/30)*(m+s/60), as=(Math.PI/30)*s;
+    x.rotate(ah); x.beginPath(); x.moveTo(0,0); x.lineTo(r*0.45,0); x.lineWidth=6; x.stroke(); x.rotate(-ah);
+    x.rotate(am); x.beginPath(); x.moveTo(0,0); x.lineTo(r*0.65,0); x.lineWidth=4; x.stroke(); x.rotate(-am);
+    x.rotate(as); x.beginPath(); x.moveTo(0,0); x.lineTo(r*0.75,0); x.lineWidth=2; x.strokeStyle='#ef4444'; x.stroke(); x.rotate(-as); x.restore();
+  }
+  function sizeAnalogCanvas(){ const wrap=document.querySelector('.clock-area'); const max=260,min=180; const px=Math.min(max,Math.max(min,Math.floor(wrap.clientWidth*0.6))); const dpr=window.devicePixelRatio||1; const c=$analog; c.style.width=c.style.height=px+'px'; c.width=c.height=Math.round(px*dpr); c.getContext('2d').setTransform(dpr,0,0,dpr,0,0); }
+  window.addEventListener('resize',()=>{ sizeAnalogCanvas(); if($analog.style.display!=='none') drawAnalog(elapsed); });
+
+  // 셀렉트(초기화면 포함)
+  const itemSelect=$('#itemSelect'), activeBadge=$('#activeItem');
+  function fillSelect(){
+    itemSelect.innerHTML='';
+    const keys=Object.keys(studyData.items);
+    keys.forEach(k=>{ const o=document.createElement('option'); o.value=o.textContent=k; itemSelect.appendChild(o); });
+    // 현재 선택 로직
+    if(itemSelect.options.length===0){
+      currentItem=null;
+    }else if(currentItem && keys.includes(currentItem)){
+      itemSelect.value=currentItem;
+    }else{
+      itemSelect.value = keys[0];
+      currentItem = keys[0];
+    }
+    if(activeBadge) activeBadge.textContent='현재: '+(currentItem||'-');
+  }
+  itemSelect.onchange=()=>{ currentItem=itemSelect.value; if(activeBadge) activeBadge.textContent='현재: '+currentItem; renderLive(); };
+
+  // 리더보드
+  function renderLive(){ const body=$('#liveBody'); if(!body) return; body.innerHTML=''; const list=[...liveUsers];
+    const meMin=Math.floor((studyData.items[currentItem]||0)/60);
+    const meRow={name:myName,item:currentItem||'기타',minutes:meMin};
+    const idx=list.findIndex(u=>u.name===myName); if(idx>-1) list[idx]=meRow; else list.push(meRow);
+    const sorted=list.filter(u=>u.item===(currentItem||'기타')).sort((a,b)=>b.minutes-a.minutes);
+    sorted.forEach((u,i)=>{ const tr=document.createElement('tr'); if(u.name===myName) tr.className='me'; tr.innerHTML=`<td>${i+1}${u.name===myName?' ⭐':''}</td><td>${u.name}</td><td>${u.item}</td><td>${u.minutes}</td>`; body.appendChild(tr); });
+  }
+
+  // 화면 전환
+  function enterStudy(){ $('#dash').style.display='none'; $('#plannerCard').style.display='none'; $('#study').style.display='block'; }
+  function backToDash(){ $('#study').style.display='none'; $('#dash').style.display=''; $('#plannerCard').style.display=''; }
+
+  // 이벤트
+  document.getElementById('addItem').onclick=()=>{
+    const v=document.getElementById('itemInput').value.trim();
+    if(!v) return alert('항목을 입력하세요');
+    if(!studyData.items[v]) studyData.items[v]=0;
+    save(); loadDashboard();
+    // 새 항목을 즉시 선택
+    itemSelect.value=v; currentItem=v;
+    if(activeBadge) activeBadge.textContent='현재: '+currentItem;
+    document.getElementById('itemInput').value='';
+  };
+
+  document.getElementById('studyGo').onclick=()=>{
+    // 항목 없으면 "기타" 자동 생성
+    if(Object.keys(studyData.items).length===0){ studyData.items['기타']=0; save(); loadDashboard(); }
+    // ✅ 초기화면 셀렉트의 선택값을 우선 적용
+    currentItem = itemSelect.value || currentItem || Object.keys(studyData.items)[0];
+    if(activeBadge) activeBadge.textContent='현재: '+currentItem;
+
+    enterStudy();
+    showDigital();
+    elapsed=0; startStopwatch();
+    renderLive();
+  };
+
+  document.getElementById('toDash').onclick=()=>{ stopStopwatch(); backToDash(); loadDashboard(); };
+
+  // 모달/누적
+  document.getElementById('stopBtn').onclick=()=>{ stopStopwatch(); document.getElementById('sessionText').textContent=`이번 공부 시간: ${fmtHMS(elapsed)}`; document.getElementById('modal').style.display='flex'; };
+  document.getElementById('keepGoing').onclick=()=>{ document.getElementById('modal').style.display='none'; startStopwatch(); };
+  document.getElementById('finish').onclick=()=>{ document.getElementById('modal').style.display='none';
+    const target=currentItem || '기타'; if(!studyData.items[target]) studyData.items[target]=0; studyData.items[target]+=elapsed; save();
+    const meIdx=liveUsers.findIndex(u=>u.name===myName && u.item===target); const minutes=Math.floor(studyData.items[target]/60);
+    if(meIdx>-1) liveUsers[meIdx].minutes=minutes; else liveUsers.push({name:myName,item:target,minutes});
+    elapsed=0; $digital.textContent='00:00:00'; document.getElementById('toDash').click(); };
+
+  // 초기
+  sizeAnalogCanvas(); showDigital(); loadDashboard(); renderLive();
+  new ResizeObserver(()=>{ sizeAnalogCanvas(); if($analog.style.display!=='none') drawAnalog(elapsed); }).observe(document.querySelector('.clock-area'));
+});
+</script>
+</body>
+</html>
