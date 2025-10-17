@@ -543,11 +543,11 @@ function initTipDrag(){
     let nx = tipState.start.left + dx;
     let ny = tipState.start.top  + dy;
 
-    const m = 10;
-    const maxX = window.innerWidth  - tipEl.offsetWidth  - m;
-    const maxY = window.innerHeight - tipEl.offsetHeight - m;
-    nx = Math.max(m, Math.min(maxX, nx));
-    ny = Math.max(m, Math.min(maxY, ny));
+   // const m = 10;
+   // const maxX = window.innerWidth  - tipEl.offsetWidth  - m;
+   // const maxY = window.innerHeight - tipEl.offsetHeight - m;
+   // nx = Math.max(m, Math.min(maxX, nx));
+   // ny = Math.max(m, Math.min(maxY, ny));
 
     tipEl.style.left = nx + 'px';
     tipEl.style.top  = ny + 'px';
@@ -1036,3 +1036,4 @@ function initSequenceControls(){
 </div>
 </body>
 </html>
+
