@@ -82,7 +82,7 @@
   content:"";
   position: fixed; right:16px; bottom:16px;
   width:220px; height:60px;
-  background: url("../lib/watermark.png") no-repeat center / contain;
+  background: url("./lib/watermark.png") no-repeat center / contain;
   opacity:.9; pointer-events:none; z-index:10001;
   filter: drop-shadow(0 1px 0 rgba(0,0,0,.25));
 }
@@ -121,9 +121,9 @@
 </div>
 
 <!-- libs -->
-<script src="../lib/three.min.js"></script>
-<script src="../lib/controls/OrbitControls.js"></script>
-<script src="../lib/renderers/CSS2DRenderer.js"></script>
+<script src="./lib/three.min.js"></script>
+<script src="./lib/controls/OrbitControls.js"></script>
+<script src="./lib/renderers/CSS2DRenderer.js"></script>
 
 <script>
 /* =========================
@@ -508,20 +508,20 @@ const PLACEHOLDER_IMG =
 /* 각 단계별 이미지/HTML 설명 — 필요에 맞게 수정 */
 const STEP_INFO = {
   1:{ title:'① 하단 보강', img:'./img/1.jpg', html:'잘린변을 필히 확인하시어 2번과 헷갈리지 않도록 합니다.' },
-  2:{ title:'② 상단 보강', img:'./img/2.jpg', html:'잘린벼을 필히 확인하시어 1번과 헷갈리지 않도록 합니다.' },
-  3:{ title:'③ 코너 보강', img:'./img/3.jpg', html:'보강재를 붙일 때는, 모양을 잡고 미리 가져다 대보시고 맞는지 확인한 뒤, 한쪽 벽면을 우선 부착합니다.' },
-  4:{ title:'④ 코너 보강', img:'./img/4.jpg', html:'보강재를 붙일 때는, 모양을 잡고 미리 가져다 대보시고 맞는지 확인한 뒤, 한쪽 벽면을 우선 부착합니다.' },
-  5:{ title:'⑤ 1000×200 패널 보강', img:'./img/5.jpg', html:'삼각면목 중심을 기준으로 한쪽면을 우선 부착하면 쉽게 부착됩니다. 실측을 한 치수만큼 제거 한 뒤 부착하면 코너 작업이 용이합니다.' },
-  6:{ title:'⑥ 400×200 패널 보강', img:'./img/6.jpg', html:'삼각면목 중심을 기준으로 한쪽면을 우선 부착하면 쉽게 부착됩니다' },
-  7:{ title:'⑦ 400×200 패널 보강', img:'./img/7.jpg', html:'삼각면목 중심을 기준으로 한쪽면을 우선 부착하면 쉽게 부착됩니다' },
-  8:{ title:'⑧ 800×200 패널 보강', img:'./img/8.jpg', html:'실측한 치수만큼 제거 한뒤, 부착하면 코너 작업이 용이합니다.' },
-  9:{ title:'⑨ 470×150 파이프 보강', img:'./img/9.jpg', html:'15번과 헷갈리지 않도록 주의!!' },
-  10:{ title:'⑩ 300×300 파이프 보강', img:'./img/10.jpg', html:'파이프 위에서 씌우지 말것!' },
-  11:{ title:'⑪ 1000×1500 큰바닥', img:'./img/11.jpg', html:'실측한 치수만큼 제거한 뒤, 부착하시면 코너작업이 용이합니다. 나머지 부분은 상단 부착하기전에 제거합니다.' },
-  12:{ title:'⑫ 800×1000 작은바닥', img:'./img/12.jpg', html:'접착면을 부착하지 않도록 주의!!' },
-  13:{ title:'⑬ 500×450 우측 패널', img:'./img/13.jpg', html:'14번과 헷갈리지 않도록 주의!! 튀어나온 모서리부터 부착!!' },
-  14:{ title:'⑭ 600×450 좌측 패널', img:'./img/14.jpg', html:'13번과 헷갈리지 않도록 주의!!' },
-  15:{ title:'⑮ 200x500 파이프 마감', img:'./img/15.jpg', html:'용융 및 철선 잊지 말것!' },
+  2:{ title:'② 상단 보강', img:'./img/2.jpg', html:'잘린변을 필히 확인하시어 1번과 헷갈리지 않도록 합니다.(2,3,4 동일함)' },
+  3:{ title:'③ 코너 보강', img:'./img/3.jpg', html:'보강재를 붙일 때는, 모양을 잡고 미리 가져다 대보시고 맞는지 확인한 뒤, 한쪽 벽면을 우선 부착합니다.(2,3,4 동일함)' },
+  4:{ title:'④ 코너 보강', img:'./img/4.jpg', html:'보강재를 붙일 때는, 모양을 잡고 미리 가져다 대보시고 맞는지 확인한 뒤, 한쪽 벽면을 우선 부착합니다.(2,3,4 동일함)' },
+  5:{ title:'⑤ 1000×200 패널 보강', img:'./img/5.jpg', html:'면목 중심라인을 기준으로 상부를 먼저 부착하면 하단 붙이기에 용이합니다.항상 모서리부분을 신경써주시고 절대 늘리지 말아야 합니다.' },
+  6:{ title:'⑥ 400×200 패널 보강', img:'./img/6.jpg', html:'삼각면목 중심을 기준으로 튀어나온 모서리부분을 넘어서지 않도록 신경 써서 붙여주세요.(6,7 동일함)' },
+  7:{ title:'⑦ 400×200 패널 보강', img:'./img/7.jpg', html:'튀어나온 모서리에 주의하시고, 상부 갭 3cm가 넘지 않도록 윗부분 슬하를 맞춰주세요.(6,7 동일함)' },
+  8:{ title:'⑧ 800×200 패널 보강', img:'./img/8.jpg', html:'파단면(치수보조선)을 넘지 않도록 주의하여 부착해주세요.' },
+  9:{ title:'⑨ 470×150 파이프 보강', img:'./img/9.jpg', html:'속치마는 절대 위에서 씌우지말고 파이프를 감싸듯이 작업해야합니다. 시작부분을 수직으로 잘 붙이면, 한바퀴 도는데 틀어짐이 없습니다. 바닥 문어발은 시작점을 붙인 뒤, 돌아가면서 부착해주세요. 겉치마와 차이는 5cm차이오니, 헷갈리지 않도록 합니다.' },
+  10:{ title:'⑩ 300×300 파이프 보강', img:'./img/10.jpg', html:'파이프 위에서 씌우지 말것!(원뿔(삼각형), 원형 호로 잘라도 됩니다.)' },
+  11:{ title:'⑪ 1000×1500 큰바닥', img:'./img/11.jpg', html:'큰바닥 붙이기 전에 전체 윤곽을 잡고, 시작점을 붙인 뒤, 진행하며 늘려가면서 작업하지 말 것!!' },
+  12:{ title:'⑫ 800×1000 작은바닥', img:'./img/12.jpg', html:'작은 바닥도 전체 윤곽을 잡고, 시작점을 붙인 뒤 진행해주세요.(원뿔(삼각형), 원형 호로 잘라도 됩니다.)' },
+  13:{ title:'⑬ 500×450 우측 패널', img:'./img/13.jpg', html:'튀어나온 모서리까지 윤곽을 잡고, 튀어나온 모서리부터 부착하면 쉽습니다.' },
+  14:{ title:'⑭ 600×450 좌측 패널', img:'./img/14.jpg', html:'13번과 차이는 10cm 차이가 있으니 헷갈리지 않게 하시고, 전체 윤곽을 잡은 뒤, 들어간 모서리부터 작업하시면 됩니다.' },
+  15:{ title:'⑮ 200x500 파이프 마감', img:'./img/15.jpg', html:'속치마와 겉치마는 길이 5cm차이가 있습니다. 헷갈리지 않도록 주의하세요.' },
 };
 const tipState = { world: null };
 function showTipForStep(step){
@@ -934,5 +934,3 @@ function initSequenceControls(){
 </div>
 </body>
 </html>
-
-
