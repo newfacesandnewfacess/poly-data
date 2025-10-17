@@ -66,7 +66,7 @@
   .guide-line{ position:absolute; left:50%; transform:translateX(-50%); height:0; border-top:5px solid #f00; opacity:.95; pointer-events:none; }
 
   /* ====== 단계 상세 툴팁 ====== */
-  .tip{ position:fixed; z-index:12; min-width:280px; max-width:360px; background:rgba(12,18,32,.96);
+  .tip{ position:fixed; z-index:12; min-width:280px;margin-top:50px; max-width:360px; background:rgba(12,18,32,.96);
         border:1px solid rgba(255,255,255,.14); border-radius:14px; box-shadow:0 12px 40px rgba(0,0,0,.45);
         color:#e9eef6; overflow:hidden; pointer-events:auto; }
   .tip.hidden{ display:none }
@@ -544,7 +544,6 @@ function updateTipScreenPos(){
   y = Math.max(margin, Math.min(window.innerHeight - margin, y));
   tipEl.style.left = `${x}px`;
   tipEl.style.top  = `${y}px`;
-  tipEl.style.margin-top  =  '150px';
   tipEl.style.transform = 'translate(-50%,-110%)';
 }
 
