@@ -66,7 +66,7 @@
   .guide-line{ position:absolute; left:50%; transform:translateX(-50%); height:0; border-top:5px solid #f00; opacity:.95; pointer-events:none; }
 
   /* ====== 단계 상세 툴팁 ====== */
-  .tip{ position:fixed; z-index:12; min-width:280px;margin-top:50px; max-width:360px; background:rgba(12,18,32,.96);
+  .tip{ position:fixed; z-index:12; min-width:280px; max-width:360px; background:rgba(12,18,32,.96);
         border:1px solid rgba(255,255,255,.14); border-radius:14px; box-shadow:0 12px 40px rgba(0,0,0,.45);
         color:#e9eef6; overflow:hidden; pointer-events:auto; }
   .tip.hidden{ display:none }
@@ -500,23 +500,32 @@ function initTipDrag(){
 
   function onTipPointerDown(e){
     e.preventDefault();
+    / 1) 현재 화면 좌표 먼저 읽기
+    const rect = tipEl.getBoundingClientRect();
+
+    // 2) transform 제거 전에 left/top을 '현재 위치'로 고정
+    tipEl.style.left = rect.left + 'px';
+    tipEl.style.top  = rect.top  + 'px';
+
+    // 3) 자동 추적 끊고 드래그 모드 진입
+    tipState.world = null;
     tipState.dragging = true;
     handle.classList.add('dragging');
 
-    // 자동 추적 끊기
-    tipState.world = null;
-
-    // 현재 화면 좌표 저장
-    const rect = tipEl.getBoundingClientRect();
     tipState.start.left = rect.left;
     tipState.start.top  = rect.top;
     tipState.start.x = e.clientX;
     tipState.start.y = e.clientY;
 
-    // 드래그 모드에서는 중앙 기준 transform 제거(좌상단 기준으로 이동)
-    tipEl.style.transform  = 'translate(0,0)';
-    tipEl.style.marginTop  = '0';
-    tipEl.setPointerCapture?.(e.pointerId);
+    // 4) 중앙 정렬용 transform/marginTop 제거 (JS는 marginTop! 하이픈 X)
+    tipEl.style.transform = 'translate(0,0)';
+    tipEl.style.marginTop = '0';
+
+    // 5) 포인터 캡처는 'handle'에 걸기 + 보조로 window 리스너도 붙이기
+    handle.setPointerCapture?.(e.pointerId);
+    window.addEventListener('pointermove', onTipPointerMove);
+    window.addEventListener('pointerup',   onTipPointerUp, { once:true });
+    window.addEventListener('pointercancel', onTipPointerUp, { once:true });
   }
 
   function onTipPointerMove(e){
@@ -529,7 +538,6 @@ function initTipDrag(){
     let nx = tipState.start.left + dx;
     let ny = tipState.start.top  + dy;
 
-    // 살짝 안쪽으로 클램프
     const m = 10;
     const maxX = window.innerWidth  - tipEl.offsetWidth  - m;
     const maxY = window.innerHeight - tipEl.offsetHeight - m;
@@ -541,10 +549,13 @@ function initTipDrag(){
   }
 
   function onTipPointerUp(e){
-    if(!tipState.dragging) return;
+      if(!tipState.dragging) return;
     tipState.dragging = false;
     handle.classList.remove('dragging');
-    tipEl.releasePointerCapture?.(e.pointerId);
+    handle.releasePointerCapture?.(e.pointerId);
+
+    window.removeEventListener('pointermove', onTipPointerMove);
+    // pointerup/cancel는 {once:true}라 자동 해제
   }
 }
 
@@ -614,17 +625,23 @@ function showTipForStep(step){
 }
 function hideTip(){ tipEl.classList.add('hidden'); tipState.world = null; }
 function updateTipScreenPos(){
- if (tipState.dragging) return;      // ★ 드래그 중엔 자동 위치 갱신 금지
-  if (!tipState.world) return;
+   if (tipState.dragging) return; // 드래그 중엔 건드리지 않기
+  if (!tipState.world)   return; // 수동 배치 모드면 건너뜀
+
   const v = tipState.world.clone(); v.project(camera);
   let x = (v.x * 0.5 + 0.5) * window.innerWidth;
   let y = (-v.y * 0.5 + 0.5) * window.innerHeight;
+
   const margin = 10;
   x = Math.max(margin, Math.min(window.innerWidth - margin, x));
   y = Math.max(margin, Math.min(window.innerHeight - margin, y));
+
   tipEl.style.left = `${x}px`;
   tipEl.style.top  = `${y}px`;
+
+  // 중앙 기준 정렬은 '자동 추적'일 때만 유지
   tipEl.style.transform = 'translate(-50%,-110%)';
+//  tipEl.style.marginTop = '150px';
 }
 
 /* 렌더 루프 (라벨 렌더 최소화) */
