@@ -544,6 +544,7 @@ function updateTipScreenPos(){
   y = Math.max(margin, Math.min(window.innerHeight - margin, y));
   tipEl.style.left = `${x}px`;
   tipEl.style.top  = `${y}px`;
+  tipEl.style.margin-top  =  '150px';
   tipEl.style.transform = 'translate(-50%,-110%)';
 }
 
