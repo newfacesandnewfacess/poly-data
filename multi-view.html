@@ -2,11 +2,12 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>멀티 유튜브 플레이어 · Video Plane + Mobile Landscape</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<title>멀티 유튜브 플레이어 · Video Plane</title>
 <style>
   :root{ --cols:1; }
   html,body{height:100%;margin:0;background:#111;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;overflow:hidden}
+  body{overscroll-behavior:contain;}
 
   /* ===== 메인 그리드 (3 레이아웃) ===== */
   #videoGrid{
@@ -24,26 +25,30 @@
     overflow:auto;
   }
 
-  /* 포커스 + 사이드 */
+  /* 포커스 + 사이드 (반응형 폭) */
   #videoGrid.layout-focus{
-    grid-template-columns: 1fr 360px;
+    grid-template-columns: minmax(0,1fr) minmax(240px, 360px);
     grid-template-rows: 100vh;
     overflow:hidden;
   }
-  .focus-main{ grid-column:1; grid-row:1; display:flex; height:100vh; }
+  .focus-main{ grid-column:1; grid-row:1; display:flex; height:100vh; min-width:0; }
   .focus-side{
     grid-column:2; grid-row:1;
     display:flex; flex-direction:column; gap:12px; padding:8px;
     overflow-y:auto; max-height:100vh;
   }
   .focus-side .video-card{ height:33.33vh; min-height:180px; }
+  /* 사이드 카드는 미리보기 → 시크바 숨김 */
+  .focus-side .controls input[type=range]{ display:none; }
 
-  /* 2×2 */
+  /* 2×2: 셀을 꽉 채움(영상은 내부 레터박스) */
   #videoGrid.layout-2x2{
     grid-template-columns: repeat(2, 1fr);
     grid-template-rows: repeat(2, 1fr);
     overflow:auto;
   }
+  #videoGrid.layout-2x2 .video-card{ height:100%; }
+  #videoGrid.layout-2x2 .player-shell{ width:100%; height:100%; flex:1 1 auto; min-height:0; aspect-ratio:auto; }
 
   /* ===== 카드/쉘/컨트롤 ===== */
   .video-card{
@@ -51,11 +56,10 @@
     background:#000; width:100%; border:0;
     position:relative; z-index:3; /* plane(1) 위로 */
   }
-  .player-shell{ background:#000; position:relative; z-index:4; }
+  .player-shell{ background:#000; position:relative; z-index:4; min-width:0; }
 
-  /* 균등/2×2는 16:9 비율로 높이 유지 */
-  #videoGrid.layout-eq2r .player-shell,
-  #videoGrid.layout-2x2 .player-shell{
+  /* 균등 레이아웃은 16:9 비율로 높이 유지 */
+  #videoGrid.layout-eq2r .player-shell{
     width:100%; aspect-ratio:16/9;
   }
 
@@ -66,7 +70,26 @@
   #videoGrid.layout-focus .focus-main .player-shell{
     flex:1 1 auto; min-height:0; height:auto; aspect-ratio:auto;
   }
-  #videoGrid.layout-focus .focus-side .player-shell{ width:100%; aspect-ratio:16/9; }
+  /* 사이드 카드: 셀 꽉 채우기 */
+  #videoGrid.layout-focus .focus-side .video-card .player-shell{
+    flex:1 1 auto; min-height:0; height:auto; aspect-ratio:auto;
+  }
+
+  /* 영상 제목/채널 오버레이 */
+  .card-meta{
+    position:absolute; top:8px; left:8px; z-index:7;
+    max-width:calc(100% - 16px);
+    background:rgba(0,0,0,.65); color:#fff;
+    font-size:12px; line-height:1.35;
+    padding:4px 8px; border-radius:6px;
+    pointer-events:none;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    display:none;
+  }
+  .card-meta::before{ content:"● "; color:#777; }
+  .card-meta.playing::before{ color:#4caf50; }
+  .card-meta b{ font-weight:600; }
+  .card-meta .meta-author{ opacity:.78; }
 
   /* 컨트롤: 카드 안쪽 하단 오버레이 (항상 보이도록) */
   .controls{
@@ -76,7 +99,7 @@
     padding-bottom: calc(10px + env(safe-area-inset-bottom));
     background:linear-gradient(to top, rgba(0,0,0,.75), rgba(0,0,0,.35), rgba(0,0,0,0));
   }
-  .controls input[type=range]{ width:45%; }
+  .controls input[type=range]{ width:45%; min-width:40px; }
   .btn{background:#222;border:1px solid #555;color:#fff;padding:6px 10px;border-radius:8px;cursor:pointer}
   .btn:hover{background:#2b2b2b}
 
@@ -94,26 +117,25 @@
 
   /* ===== 인트로 모달 ===== */
   #introModal{
-  position:fixed; inset:0;
-  background:rgba(0,0,0,.9);
-  display:flex; justify-content:center; align-items:center;
-  z-index:11000;                 /* 게이트보다 위 */
-  overflow:auto;                 /* ★ 내용이 크면 스크롤 */
-  padding: max(24px, env(safe-area-inset-top))
-           max(24px, env(safe-area-inset-right))
-           max(24px, env(safe-area-inset-bottom))
-           max(24px, env(safe-area-inset-left));
-}
-/* 모달 박스: 뷰포트에 맞춰 자동 줄이고 내부 스크롤 */
-#introBox{
-  background:#fff; color:#000; padding:20px; border-radius:12px;
-  width:min(860px, 94vw);
-  max-height: calc(100vh - 2*24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-  overflow:auto;                 /* ★ 표/리스트가 길어져도 스크롤 */
-  box-sizing:border-box;
-}
+    position:fixed; inset:0;
+    background:rgba(0,0,0,.9);
+    display:flex; justify-content:center; align-items:center;
+    z-index:11000;
+    overflow:auto;
+    padding: max(24px, env(safe-area-inset-top))
+             max(24px, env(safe-area-inset-right))
+             max(24px, env(safe-area-inset-bottom))
+             max(24px, env(safe-area-inset-left));
+  }
+  #introBox{
+    background:#fff; color:#000; padding:20px; border-radius:12px;
+    width:min(860px, 94vw);
+    max-height: calc(100vh - 2*24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow:auto;
+    box-sizing:border-box;
+  }
   #urlRow{display:flex;gap:8px;align-items:center;margin:8px 0}
-  #urlInput{flex:1;padding:8px}
+  #urlInput{flex:1;padding:8px;min-width:0}
   table{width:100%;border-collapse:collapse;margin-top:12px}
   th,td{border:1px solid #ccc;padding:6px;text-align:center}
   td.url{max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -126,6 +148,39 @@
   .layout-caption{margin-top:8px;text-align:center;font-weight:600}
   .thumb-svg{width:100%;height:100%}
 
+  /* ===== 영상 변경 모달 ===== */
+  #changeModal{
+    position:fixed; inset:0; z-index:12000;
+    background:rgba(0,0,0,.78);
+    display:none; justify-content:center; align-items:center;
+    padding: max(16px, env(safe-area-inset-top))
+             max(16px, env(safe-area-inset-right))
+             max(16px, env(safe-area-inset-bottom))
+             max(16px, env(safe-area-inset-left));
+  }
+  #changeBox{
+    background:#1c1c1e; color:#fff; padding:18px; border-radius:12px;
+    width:min(460px, 94vw); box-sizing:border-box;
+    border:1px solid #333;
+  }
+  #changeBox h3{ margin:0 0 6px; font-size:16px; }
+  .change-current{
+    margin:0 0 12px; font-size:13px; color:#bbb; line-height:1.4;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  #changeRow{ display:flex; gap:8px; }
+  #changeInput{
+    flex:1; min-width:0; padding:10px; border-radius:8px;
+    border:1px solid #555; background:#111; color:#fff; font-size:14px;
+  }
+  #changeInput:focus{ outline:2px solid #0a84ff; border-color:transparent; }
+  #changeInput.error{ outline:2px solid #ff453a; border-color:transparent; }
+  .change-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
+  .change-actions .btn-primary{
+    background:#0a84ff; border:0; color:#fff;
+    padding:8px 16px; border-radius:8px; cursor:pointer; font-size:14px;
+  }
+
   /* ===== Video Plane: 모든 iframe의 유일한 부모 ===== */
   .iframe-wrap{
     position:fixed; left:0; top:0; width:0; height:0;
@@ -136,17 +191,62 @@
     width:100% !important; height:100% !important; display:block;
   }
 
-  /* 반응형(선택) */
+  /* ===== 반응형: 가로(랜드스케이프) ===== */
   @media (max-width: 1200px){
     #videoGrid.layout-eq2r { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 900px) and (orientation: landscape){
+    #videoGrid.layout-focus{ grid-template-columns: minmax(0,1fr) minmax(170px, 32vw); }
+    #videoGrid.layout-focus .focus-side .video-card{ height:31vh; min-height:110px; }
   }
   @media (max-width: 720px){
     #videoGrid.layout-eq2r { grid-template-columns: 1fr; }
   }
 
-  /* ===== 세로모드 차단 게이트 ===== */
+  /* ===== 반응형: 세로(포터레이트) ===== */
+  @media (max-width: 900px) and (orientation: portrait){
+    /* 균등: 2열 */
+    #videoGrid.layout-eq2r { grid-template-columns: repeat(2, 1fr); }
+
+    /* 포커스: 메인 위 + 하단 가로 스트립 */
+    #videoGrid.layout-focus{
+      grid-template-columns: 1fr;
+      grid-template-rows: minmax(0,1fr) minmax(0, 34vh);
+    }
+    #videoGrid.layout-focus .focus-main{ grid-column:1; grid-row:1; height:100%; }
+    #videoGrid.layout-focus .focus-side{
+      grid-column:1; grid-row:2;
+      flex-direction:row; overflow-x:auto; overflow-y:hidden;
+      max-height:none; padding:6px; gap:8px;
+    }
+    #videoGrid.layout-focus .focus-side .video-card{
+      width:46vw; height:auto; min-height:0; flex:0 0 auto;
+    }
+    #videoGrid.layout-focus .focus-side .video-card .player-shell{
+      aspect-ratio:16/9; height:auto; flex:0 0 auto;
+    }
+    #videoGrid.layout-focus .focus-side .card-meta{ display:none; }
+
+    /* 2×2: 2열 비율 유지 + 세로 스크롤 */
+    #videoGrid.layout-2x2{
+      grid-template-rows:none; grid-auto-rows:auto;
+    }
+    #videoGrid.layout-2x2 .video-card{ height:auto; }
+    #videoGrid.layout-2x2 .player-shell{ aspect-ratio:16/9; height:auto; flex:0 0 auto; }
+  }
+
+  /* ===== 좁은 화면 컨트롤 ===== */
+  @media (max-width: 720px){
+    .controls{ padding:6px 8px; gap:5px; }
+    .controls input[type=range]{ width:40%; }
+    .btn{ padding:5px 8px; font-size:12px; border-radius:6px; }
+    .vol-pop{ bottom:50px; right:6px; padding:6px 8px; }
+    .vol-pop input[type=range]{ width:120px; }
+    .card-meta{ font-size:11px; padding:3px 6px; }
+  }
+
+  /* ===== 세로모드 안내 게이트(좁은 폰에서만, 무시 가능) ===== */
   #landscapeGate{
-      z-index.10000;
     position: fixed; inset: 0; z-index: 10000;
     display: none; align-items: center; justify-content: center;
     background: #000; color: #fff; text-align: center;
@@ -160,19 +260,26 @@
   }
   #landscapeGate h3{ margin:0 0 8px 0; }
   #landscapeGate p{ margin:0 0 16px 0; color:#cfcfcf; }
+  #landscapeGate .gate-actions{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
   #landscapeGate .btn-primary{
-    background:#0a84ff; border:0; color:#fff; padding:10px 14px; border-radius:10px; cursor:pointer
+    background:#0a84ff; border:0; color:#fff; padding:10px 14px; border-radius:10px; cursor:pointer;
+  }
+  #landscapeGate .btn-secondary{
+    background:#2a2a2a; border:1px solid #555; color:#fff; padding:10px 14px; border-radius:10px; cursor:pointer;
   }
 </style>
 </head>
 <body>
 
-<!-- 세로모드 차단 게이트(모바일 세로일 때 표시) -->
+<!-- 세로모드 안내 게이트(좁은 폰 세로일 때 표시, 무시 가능) -->
 <div id="landscapeGate">
   <div class="box">
     <h3>가로 모드로 시청하세요</h3>
-    <p>모바일에선 가로(랜드스케이프)로만 재생됩니다. 아래 버튼을 눌러 가로 모드로 전환해 주세요.</p>
-    <button class="btn-primary" onclick="forceLandscape()">가로모드로 보기</button>
+    <p>모바일 좁은 화면 세로 모드에선 가로(랜드스케이프)가 더 쾌적합니다. 가로로 전환하거나, 아래 버튼으로 세로 레이아웃을 그대로 사용할 수 있습니다.</p>
+    <div class="gate-actions">
+      <button class="btn-primary" onclick="forceLandscape()">가로모드로 보기</button>
+      <button class="btn-secondary" onclick="dismissLandscape()">세로로 계속 보기</button>
+    </div>
     <div style="margin-top:10px;font-size:12px;color:#9a9a9a">
       일부 브라우저(iOS Safari)는 버튼 대신 직접 기기를 가로로 돌려야 합니다.
     </div>
@@ -189,7 +296,7 @@
       <button class="btn" onclick="addUrl()">+ 추가</button>
       <button class="btn" onclick="startApp()">시작</button>
     </div>
-    <div style="display:flex; gap:8px; margin:6px 0;">
+    <div style="display:flex; gap:8px; margin:6px 0; flex-wrap:wrap;">
       <button class="btn" onclick="useSampleDefaults(6)">샘플 불러오기</button>
       <button class="btn" onclick="loadTrendingKR(6)">한국 인기영상 불러오기(베타)</button>
     </div>
@@ -241,6 +348,23 @@
   </div>
 </div>
 
+<!-- 영상 변경 모달 (창별) -->
+<div id="changeModal">
+  <div id="changeBox">
+    <h3 id="changeTitle">영상 변경</h3>
+    <p class="change-current" id="changeCurrent"></p>
+    <div id="changeRow">
+      <input id="changeInput" type="text" placeholder="유튜브 주소 또는 영상 ID(11자)"
+             oninput="this.classList.remove('error')"
+             onkeydown="if(event.key==='Enter'){ event.preventDefault(); submitChange(); }" />
+    </div>
+    <div class="change-actions">
+      <button class="btn-primary" onclick="submitChange()">변경</button>
+      <button class="btn" onclick="closeChangeModal()">취소</button>
+    </div>
+  </div>
+</div>
+
 <!-- 메인 그리드 -->
 <div id="videoGrid" class="layout-eq2r"></div>
 
@@ -255,11 +379,15 @@ let players = [];            // YT.Player 인스턴스
 let wraps   = [];            // 각 플레이어의 고정 래퍼(.iframe-wrap)
 let videoCount = 0;
 let currentLayout = 'eq2r';
+let changeTarget = null;     // 영상 변경 모달이 가리키는 창 인덱스
 
 /* ===== 유틸 ===== */
 function extractVideoID(url){
   const m = (url||'').trim().match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
   return m ? m[1] : null;
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 /* ===== 모달 ===== */
@@ -354,7 +482,7 @@ function startApp(){
   if(first) selectCard(first);
 
   document.getElementById('introModal').style.display='none';
-     updateOrientationGate();                 // ★ 추가
+  updateOrientationGate();
 }
 
 /* ===== 레이아웃 ===== */
@@ -419,16 +547,20 @@ function syncPos(idx){
 }
 function syncAll(){ for(let i=0;i<players.length;i++) syncPos(i); }
 
-/* 스크롤/리사이즈시 rAF로 동기화 */
+/* 스크롤/리사이즈/레이아웃 변화 시 rAF로 동기화 */
 let syncScheduled = false;
 function requestSync(){ if(syncScheduled) return; syncScheduled = true; requestAnimationFrame(()=>{ syncScheduled=false; syncAll(); }); }
 window.addEventListener('resize', requestSync, {passive:true});
+window.addEventListener('orientationchange', ()=> setTimeout(requestSync, 250));
 const _scrollTargets = new WeakSet();
 function attachScrollSync(el){
   if(!el || _scrollTargets.has(el)) return;
   el.addEventListener('scroll', requestSync, {passive:true});
   _scrollTargets.add(el);
 }
+/* 레이아웃 변화(컬럼/폭 변경 등)도 감지 */
+const _resizeObs = (typeof ResizeObserver !== 'undefined') ? new ResizeObserver(()=>requestSync()) : null;
+if(_resizeObs) _resizeObs.observe(document.getElementById('videoGrid'));
 
 /* ===== 플레이어 생성 ===== */
 function createPlayer(videoId){
@@ -440,10 +572,12 @@ function createPlayer(videoId){
   card.dataset.idx = idx;
   card.onclick = ()=>selectCard(card);
   card.innerHTML = `
+    <div class="card-meta" id="meta${idx}"></div>
     <div class="player-shell" id="shell${idx}"></div>
     <div class="controls" onclick="event.stopPropagation()">
       <input id="seek${idx}" type="range" min="0" max="100" value="0" step="1" oninput="seekVideo(${idx}, this.value)">
       <button id="playBtn${idx}" class="btn" onclick="togglePlay(${idx})">▶ PLAY</button>
+      <button id="changeBtn${idx}" class="btn" title="영상 변경" onclick="openChangeModal(${idx})">🔁</button>
       <div class="vol-wrap">
         <button id="muteBtn${idx}" class="btn" onclick="toggleMute(${idx})">🔇</button>
         <div id="volPop${idx}" class="vol-pop">
@@ -477,6 +611,7 @@ function createPlayer(videoId){
   });
 
   videoCount++;
+  if(_resizeObs){ _resizeObs.observe(card); _resizeObs.observe(document.getElementById(`shell${idx}`)); }
   applyLayout();
   requestSync();
 }
@@ -531,12 +666,28 @@ function onPlayerReady(e){
     if(seek && dur){ seek.max = dur; seek.value = cur; }
     updatePlayUI(idx);
     updateAudioUI(idx);
+    updateMeta(idx);
   }, 500);
 
   requestSync();
 }
 function onPlayerStateChange(e){
   // 필요 시 상태 기반 처리 가능
+}
+
+/* ===== 영상 정보 오버레이 (제목/채널명, API 키 불필요) ===== */
+function updateMeta(idx){
+  const el = document.getElementById(`meta${idx}`);
+  const p = players[idx];
+  if(!el || !p || typeof p.getVideoData !== 'function'){ if(el) el.style.display='none'; return; }
+  let title='', author='';
+  try{ const d = p.getVideoData()||{}; title = d.title||''; author = d.author||''; }catch(_){}
+  if(!title){ el.style.display='none'; el.classList.remove('playing'); return; }
+  el.style.display = '';
+  el.innerHTML = `<b>${escapeHtml(title)}</b>${author ? `<span class="meta-author"> · ${escapeHtml(author)}</span>` : ''}`;
+  let st = -1;
+  try{ st = typeof p.getPlayerState === 'function' ? p.getPlayerState() : -1; }catch(_){}
+  el.classList.toggle('playing', st===1);
 }
 
 function ensureSelected(idx){
@@ -586,18 +737,117 @@ function seekVideo(idx, v){
   p.seekTo(Number(v), true);
 }
 
-/* ===== 세로모드 강제 (모바일) ===== */
-function isPortrait(){
-  return window.matchMedia("(orientation: portrait)").matches;
+/* ===== 영상 변경 (창별) ===== */
+function openChangeModal(idx){
+  changeTarget = idx;
+  const p = players[idx];
+  let label = `창 ${idx+1}`;
+  if(p && typeof p.getVideoData === 'function'){
+    try{
+      const d = p.getVideoData()||{};
+      if(d.title) label = `${d.title}${d.author ? ` · ${d.author}` : ''}`;
+    }catch(_){}
+  }
+  document.getElementById('changeTitle').textContent = `영상 변경 (창 ${idx+1})`;
+  document.getElementById('changeCurrent').textContent = `현재: ${label}`;
+  const inp = document.getElementById('changeInput');
+  inp.value=''; inp.classList.remove('error');
+  document.getElementById('changeModal').style.display='flex';
+  setTimeout(()=>inp.focus(), 60);
 }
+function closeChangeModal(){
+  document.getElementById('changeModal').style.display='none';
+  changeTarget = null;
+}
+function submitChange(){
+  if(changeTarget==null) return;
+  const raw = document.getElementById('changeInput').value.trim();
+  const id = extractVideoID(raw) || (raw.match(/^[a-zA-Z0-9_-]{11}$/) ? raw : null);
+  if(!id){
+    const inp = document.getElementById('changeInput');
+    inp.classList.add('error'); inp.focus();
+    return;
+  }
+  const p = players[changeTarget];
+  if(!p){ closeChangeModal(); return; }
+  try{ p.loadVideoById(id); }catch(e){ console.warn('loadVideoById 실패:', e); }
+  updateMeta(changeTarget);
+  requestSync();
+  closeChangeModal();
+}
+/* 모달 배경 클릭 닫기 */
+document.getElementById('changeModal').addEventListener('click', e=>{
+  if(e.target === document.getElementById('changeModal')) closeChangeModal();
+});
+
+/* ===== 포커스 사용성: 키보드 단축키 ===== */
+function modalsOpen(){
+  const intro = document.getElementById('introModal');
+  if(intro && intro.style.display !== 'none') return true;
+  const chg = document.getElementById('changeModal');
+  if(chg && chg.style.display === 'flex') return true;
+  return false;
+}
+function focusNext(delta){
+  const cards = [...document.querySelectorAll('.video-card')];
+  if(!cards.length) return;
+  const cur = cards.findIndex(c=>c.classList.contains('selected'));
+  const next = (cur===-1 ? 0 : (cur+delta+cards.length)%cards.length);
+  selectCard(cards[next]);
+}
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape'){ closeChangeModal(); return; }
+  if(modalsOpen()) return;
+  const t = e.target;
+  if(t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.isContentEditable)) return;
+  if(e.metaKey || e.ctrlKey || e.altKey) return;
+  const cards = [...document.querySelectorAll('.video-card')];
+  if(!cards.length) return;
+  const cur = cards.findIndex(c=>c.classList.contains('selected'));
+  const selIdx = cur>=0 ? Number(cards[cur].dataset.idx) : -1;
+
+  switch(e.key){
+    case 'ArrowRight': case 'ArrowDown': e.preventDefault(); focusNext(1); break;
+    case 'ArrowLeft':  case 'ArrowUp':   e.preventDefault(); focusNext(-1); break;
+    case ' ': e.preventDefault(); if(selIdx>=0) togglePlay(selIdx); break;
+    case 'm': case 'M': if(selIdx>=0) toggleMute(selIdx); break;
+    default:
+      const n = parseInt(e.key, 10);
+      if(!isNaN(n) && n>=1 && n<=cards.length){ e.preventDefault(); selectCard(cards[n-1]); }
+  }
+});
+
+/* ===== 포커스 사용성: 모바일 스와이프(다음/이전 창) ===== */
+let _touch = {x:0, y:0, active:false};
+const _gridEl = document.getElementById('videoGrid');
+_gridEl.addEventListener('touchstart', e=>{
+  if(!e.touches.length || modalsOpen()){ _touch.active=false; return; }
+  _touch = { x:e.touches[0].clientX, y:e.touches[0].clientY, active:true };
+}, {passive:true});
+_gridEl.addEventListener('touchend', e=>{
+  if(!_touch.active) return;
+  _touch.active=false;
+  if(!e.changedTouches.length) return;
+  const dx = e.changedTouches[0].clientX - _touch.x;
+  const dy = e.changedTouches[0].clientY - _touch.y;
+  if(Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)*1.2){
+    dx < 0 ? focusNext(1) : focusNext(-1);
+  }
+}, {passive:true});
+
+/* ===== 세로모드 안내 게이트 (좁은 폰에서만, 무시 가능) ===== */
 function updateOrientationGate(){
   const gate = document.getElementById('landscapeGate');
   const introOpen = document.getElementById('introModal')?.style.display !== 'none';
-  const isMobileLike = Math.min(window.innerWidth, window.innerHeight) <= 900;
-  if (!introOpen && isMobileLike && window.matchMedia("(orientation: portrait)").matches)
-    gate.classList.add('show');
-  else
-    gate.classList.remove('show');
+  const dismissed = sessionStorage.getItem('landscapeDismissed') === '1';
+  const narrow = window.innerWidth <= 700;
+  const portrait = window.matchMedia("(orientation: portrait)").matches;
+  if(!introOpen && !dismissed && narrow && portrait) gate.classList.add('show');
+  else gate.classList.remove('show');
+}
+function dismissLandscape(){
+  sessionStorage.setItem('landscapeDismissed', '1');
+  updateOrientationGate();
 }
 async function forceLandscape(){
   try{
