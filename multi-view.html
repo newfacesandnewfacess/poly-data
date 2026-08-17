@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"/>
 <title>멀티 유튜브 플레이어 · Video Plane</title>
 <style>
   :root{ --cols:1; }
@@ -181,6 +181,8 @@
     background:#1c1c1e; color:#fff; padding:18px; border-radius:12px;
     width:min(460px, 94vw); box-sizing:border-box;
     border:1px solid #333;
+    max-height: calc(100vh - 2*16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow:auto;
   }
   #changeBox h3{ margin:0 0 6px; font-size:16px; }
   .change-current{
@@ -194,6 +196,15 @@
   }
   #changeInput:focus{ outline:2px solid #0a84ff; border-color:transparent; }
   #changeInput.error{ outline:2px solid #ff453a; border-color:transparent; }
+  /* 키보드가 열리면 모달을 위로 정렬 (iOS visualViewport 대응) */
+  #changeModal.kb-open{
+    align-items:flex-start;
+    padding-top:10px;
+    padding-bottom: calc(var(--kb, 0px) + 8px);
+  }
+  #changeModal.kb-open #changeBox{
+    max-height: calc(100vh - var(--kb, 0px) - 60px);
+  }
   .change-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
   .change-actions .btn-primary{
     background:#0a84ff; border:0; color:#fff;
@@ -201,7 +212,7 @@
   }
 
   /* ===== 샘플 선택 모달 ===== */
-  #sampleModal{
+  #sampleModal, #favModal{
     position:fixed; inset:0; z-index:12500;
     background:rgba(0,0,0,.78);
     display:none; justify-content:center; align-items:center;
@@ -210,16 +221,16 @@
              max(16px, env(safe-area-inset-bottom))
              max(16px, env(safe-area-inset-left));
   }
-  #sampleBox{
+  #sampleBox, #favBox{
     background:#1c1c1e; color:#fff; padding:18px; border-radius:12px;
     width:min(760px, 96vw);
     border:1px solid #333;
     max-height: calc(100vh - 2*16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     overflow:auto;
   }
-  #sampleBox h3{ margin:0 0 4px; font-size:16px; }
+  #sampleBox h3, #favBox h3{ margin:0 0 4px; font-size:16px; }
   .sample-hint{ margin:0 0 10px; font-size:13px; color:#bbb; }
-  #sampleGrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:10px; }
+  #sampleGrid, #historyGrid, #favGrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:10px; }
   .sample-card{
     position:relative; background:#111; border:2px solid #333;
     border-radius:10px; overflow:hidden; cursor:pointer; user-select:none;
@@ -363,6 +374,10 @@
       <button class="btn" onclick="openSampleModal()">샘플에서 선택</button>
       <button class="btn" onclick="loadTrendingKR(6)">한국 인기영상 불러오기(베타)</button>
     </div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:2px 0 10px;cursor:pointer">
+      <input id="favAutoLoad" type="checkbox"/> 시작 시 즐겨찾기 자동 불러오기
+      <span style="color:#666;font-size:12px">(즐겨찾기가 있으면 샘플 대신 로드)</span>
+    </label>
 
     <div class="layout-picker">
       <div class="layout-card active" data-layout="eq2r" onclick="pickLayout(this)">
@@ -416,6 +431,18 @@
   <div id="sampleBox">
     <h3>샘플에서 선택</h3>
     <p class="sample-hint">원하는 영상을 골라 목록에 추가하세요. (제목은 자동으로 불러옵니다)</p>
+
+    <!-- 최근 본 영상 (히스토리) -->
+    <div id="historySection" style="display:none">
+      <div style="display:flex;align-items:center;gap:8px;margin:14px 0 4px;">
+        <h3 style="margin:0;font-size:16px;">최근 본 영상</h3>
+        <span style="flex:1"></span>
+        <button class="btn" onclick="clearHistory()" title="이 기기의 시청 기록을 모두 삭제">비우기</button>
+      </div>
+      <p class="sample-hint">재생했던 영상이 자동으로 저장되어 다시 고를 수 있습니다.</p>
+      <div id="historyGrid"></div>
+    </div>
+
     <div id="sampleGrid"></div>
     <div class="sample-actions">
       <button class="btn" onclick="toggleSelectAllSamples()">전체 선택/해제</button>
@@ -423,6 +450,23 @@
       <span style="flex:1"></span>
       <button class="btn" onclick="closeSampleModal()">닫기</button>
       <button class="btn-primary" onclick="addSelectedSamples()">선택 추가</button>
+    </div>
+  </div>
+</div>
+
+<!-- 즐겨찾기 모달 -->
+<div id="favModal">
+  <div id="favBox">
+    <h3>즐겨찾기</h3>
+    <p class="sample-hint">즐겨찾기한 영상입니다. 선택 후 '추가'를 누르면 새 창으로 재생됩니다.</p>
+    <div id="favGrid"></div>
+    <div class="sample-actions">
+      <button class="btn" onclick="toggleSelectAllFavs()">전체 선택/해제</button>
+      <span id="favCount" class="sample-count">0개 선택</span>
+      <span style="flex:1"></span>
+      <button class="btn" onclick="removeSelectedFavs()">삭제</button>
+      <button class="btn" onclick="closeFavModal()">닫기</button>
+      <button class="btn-primary" onclick="addSelectedFavs()">선택 추가</button>
     </div>
   </div>
 </div>
@@ -457,6 +501,8 @@
     <input id="fwSeek" type="range" min="0" max="100" value="0" step="1" oninput="seekFocused(this.value)">
     <button id="fwPlay" class="btn" title="재생/일시정지 (Space)" onclick="toggleFocusedPlay()">▶</button>
     <button id="fwChange" class="btn" title="영상 변경 (현재 창)" onclick="openFocusedChange()">🔁</button>
+    <button id="fwFav" class="btn" title="즐겨찾기 추가 (F)" onclick="toggleFocusedFav()">☆</button>
+    <button id="fwFavOpen" class="btn" title="즐겨찾기 목록" onclick="openFavModal()">📑</button>
     <div class="vol-wrap">
       <button id="fwMute" class="btn" title="음소거 (M)" onclick="toggleFocusedMute()">🔇</button>
       <div id="fwVolPop" class="vol-pop">
@@ -555,6 +601,7 @@ async function loadTrendingKR(max=6){
 /* 페이지 로드 시 비어있으면 샘플 채워 보여주기 */
 window.addEventListener('load', ()=>{
   if(pending.length===0) useSampleDefaults(6);
+  try{ document.getElementById('favAutoLoad').checked = localStorage.getItem('vpFavAutoLoad')==='1'; }catch(_){}
   updateWidget(); // 위젯 표시 상태 초기화(시작 전엔 숨김)
 });
 
@@ -564,6 +611,12 @@ function startApp(){
     const fallback = document.getElementById('urlInput').value.trim();
     const id = extractVideoID(fallback);
     if(id) pending.push(fallback);
+  }
+  if(pending.length===0 && document.getElementById('favAutoLoad').checked){
+    pending = loadFavs()
+      .map(e=>e.id)
+      .filter(id=>/^[a-zA-Z0-9_-]{11}$/.test(id))
+      .map(id=>`https://youtu.be/${id}`);
   }
   if(pending.length===0){ useSampleDefaults(6); }
 
@@ -745,6 +798,8 @@ function onPlayerReady(e){
   const idx = players.indexOf(p);
   try{ p.mute(); p.playVideo(); }catch(_){}   // 모두 음소거 자동재생
   setInteractable(idx, false);
+  // 자동재생 상태변화가 잡히지 않는 경우를 위한 지연 기록
+  setTimeout(()=>recordHistory(idx), 2000);
 
   // UI 갱신 루프 (카드 메타 + 포커스 위젯, 위젯 표시 자가복구 포함)
   setInterval(()=>{
@@ -760,7 +815,11 @@ function onPlayerReady(e){
   requestSync();
 }
 function onPlayerStateChange(e){
-  // 필요 시 상태 기반 처리 가능
+  // 재생 시작 시 시청 기록에 저장
+  if(e.data === YT.PlayerState.PLAYING){
+    const idx = players.indexOf(e.target);
+    if(idx>=0) recordHistory(idx);
+  }
 }
 
 /* ===== 영상 정보 오버레이 (제목/채널명, API 키 불필요) ===== */
@@ -832,6 +891,7 @@ function updateWidget(){
   titleEl.title = label;
   updateFwPlayUI(idx);
   updateFwAudioUI(idx);
+  updateFavUI(idx);
 }
 function updateFwSeek(idx, dur, cur){
   const seek = document.getElementById('fwSeek');
@@ -906,11 +966,30 @@ document.getElementById('changeModal').addEventListener('click', e=>{
   if(e.target === document.getElementById('changeModal')) closeChangeModal();
 });
 
+/* 모바일 키보드가 모달을 가리지 않게 visualViewport 대응 */
+function adjustChangeModalForKeyboard(){
+  const modal = document.getElementById('changeModal');
+  if(!modal || modal.style.display !== 'flex') return;
+  const vv = window.visualViewport;
+  if(!vv) return;
+  const kb = Math.max(0, window.innerHeight - vv.height);
+  modal.classList.toggle('kb-open', kb > 100);
+  if(kb > 100) modal.style.setProperty('--kb', kb + 'px');
+  else modal.style.removeProperty('--kb');
+  const inp = document.getElementById('changeInput');
+  if(kb > 100 && inp && inp.scrollIntoView){ try{ inp.scrollIntoView({block:'nearest'}); }catch(_){} }
+}
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', adjustChangeModalForKeyboard);
+  window.visualViewport.addEventListener('scroll', adjustChangeModalForKeyboard);
+}
+
 /* ===== 샘플 선택 모달 ===== */
 let sampleSelected = new Set();
 function openSampleModal(){
   sampleSelected.clear();
   renderSampleGrid();
+  renderHistorySection();
   document.getElementById('sampleModal').style.display='flex';
 }
 function closeSampleModal(){
@@ -987,6 +1066,195 @@ document.getElementById('sampleModal').addEventListener('click', e=>{
   if(e.target === document.getElementById('sampleModal')) closeSampleModal();
 });
 
+/* ===== 최근 본 영상 (히스토리) ===== */
+const HISTORY_KEY = 'vpWatchHistory';
+const HISTORY_MAX = 24;
+function loadHistory(){
+  try{
+    const h = JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]');
+    return Array.isArray(h) ? h : [];
+  }catch(_){ return []; }
+}
+function saveHistory(h){
+  try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); }catch(_){}
+}
+function recordHistory(idx){
+  const p = players[idx];
+  if(!p || typeof p.getVideoData !== 'function') return;
+  let id='', title='', author='';
+  try{
+    const d = p.getVideoData()||{};
+    id = d.video_id || '';
+    title = d.title || '';
+    author = d.author || '';
+  }catch(_){}
+  if(!id) return;
+  const h = loadHistory();
+  const old = h.find(e=>e.id===id);
+  h.unshift({
+    id,
+    title: title || old?.title || '',
+    author: author || old?.author || '',
+    ts: Date.now()
+  });
+  // 중복 제거 후 최신순 유지, 최대 개수 제한
+  const deduped = [];
+  h.forEach(e=>{ if(!deduped.some(x=>x.id===e.id)) deduped.push(e); });
+  saveHistory(deduped.slice(0, HISTORY_MAX));
+  renderHistorySection();
+}
+function renderHistorySection(){
+  const section = document.getElementById('historySection');
+  const grid = document.getElementById('historyGrid');
+  if(!section || !grid) return;
+  const h = loadHistory();
+  if(!h.length){ section.style.display='none'; return; }
+  section.style.display='';
+  grid.innerHTML='';
+  h.forEach(entry=>{
+    const card = document.createElement('div');
+    card.className='sample-card';
+    card.dataset.id = entry.id;
+    card.innerHTML = `
+      <img src="https://img.youtube.com/vi/${entry.id}/hqdefault.jpg" alt="" loading="lazy"/>
+      <div class="sample-check">✓</div>
+      <div class="sample-info">
+        <div class="sample-title">${escapeHtml(entry.title || entry.id)}</div>
+        <div class="sample-author">${entry.author ? escapeHtml(entry.author) : '최근 시청'}</div>
+      </div>`;
+    card.onclick = ()=>toggleSample(card);
+    grid.appendChild(card);
+    if(!entry.title) fetchSampleTitle(entry.id, card);
+  });
+}
+function clearHistory(){
+  saveHistory([]);
+  // 히스토리에서 선택했던 항목 정리 (샘플 그리드에 없는 id만 제거)
+  sampleSelected.forEach(id=>{
+    if(!document.querySelector(`#sampleGrid .sample-card[data-id="${id}"]`)) sampleSelected.delete(id);
+  });
+  renderHistorySection();
+  updateSampleCount();
+}
+
+/* ===== 즐겨찾기 (위젯 ★ + 전용 모달) ===== */
+const FAV_KEY = 'vpFavorites';
+const FAV_MAX = 100;
+function loadFavs(){
+  try{
+    const f = JSON.parse(localStorage.getItem(FAV_KEY)||'[]');
+    return Array.isArray(f) ? f : [];
+  }catch(_){ return []; }
+}
+function saveFavs(f){
+  try{ localStorage.setItem(FAV_KEY, JSON.stringify(f)); }catch(_){}
+}
+function isFav(id){ return loadFavs().some(e=>e.id===id); }
+function getFocusedVideoInfo(){
+  const idx = getSelectedIdx();
+  const p = idx>=0 ? players[idx] : null;
+  if(!p || typeof p.getVideoData !== 'function') return null;
+  let id='', title='', author='';
+  try{
+    const d = p.getVideoData()||{};
+    id = d.video_id || ''; title = d.title || ''; author = d.author || '';
+  }catch(_){}
+  return id ? {id, title, author} : null;
+}
+function toggleFocusedFav(){
+  const info = getFocusedVideoInfo();
+  if(!info) return;
+  let f = loadFavs();
+  if(f.some(e=>e.id===info.id)) f = f.filter(e=>e.id!==info.id);
+  else f.unshift({...info, ts:Date.now()});
+  saveFavs(f.slice(0, FAV_MAX));
+  updateFavUI(getSelectedIdx());
+  renderFavGrid();
+}
+function updateFavUI(idx){
+  const btn = document.getElementById('fwFav');
+  if(!btn) return;
+  const p = idx>=0 ? players[idx] : null;
+  let id='';
+  if(p && typeof p.getVideoData === 'function'){
+    try{ id = (p.getVideoData()||{}).video_id || ''; }catch(_){}
+  }
+  const fav = !!id && isFav(id);
+  btn.textContent = fav ? '★' : '☆';
+  btn.title = fav ? '즐겨찾기 해제 (F)' : '즐겨찾기 추가 (F)';
+}
+
+/* 즐겨찾기 전용 모달 */
+let favSelected = new Set();
+function openFavModal(){
+  favSelected.clear();
+  renderFavGrid();
+  document.getElementById('favModal').style.display='flex';
+}
+function closeFavModal(){
+  document.getElementById('favModal').style.display='none';
+  favSelected.clear();
+}
+function renderFavGrid(){
+  const grid = document.getElementById('favGrid');
+  if(!grid) return;
+  grid.innerHTML='';
+  loadFavs().forEach(entry=>{
+    const card = document.createElement('div');
+    card.className='sample-card';
+    card.dataset.id = entry.id;
+    card.innerHTML = `
+      <img src="https://img.youtube.com/vi/${entry.id}/hqdefault.jpg" alt="" loading="lazy"/>
+      <div class="sample-check">✓</div>
+      <div class="sample-info">
+        <div class="sample-title">${escapeHtml(entry.title || entry.id)}</div>
+        <div class="sample-author">${entry.author ? escapeHtml(entry.author) : ''}</div>
+      </div>`;
+    card.onclick = ()=>toggleFavCard(card);
+    grid.appendChild(card);
+  });
+  updateFavCount();
+}
+function toggleFavCard(card){
+  card.classList.toggle('sel');
+  if(card.classList.contains('sel')) favSelected.add(card.dataset.id);
+  else favSelected.delete(card.dataset.id);
+  updateFavCount();
+}
+function toggleSelectAllFavs(){
+  const cards = [...document.querySelectorAll('#favGrid .sample-card')];
+  const all = cards.length>0 && cards.every(c=>c.classList.contains('sel'));
+  cards.forEach(c=>{
+    c.classList.toggle('sel', !all);
+    if(!all) favSelected.add(c.dataset.id); else favSelected.delete(c.dataset.id);
+  });
+  updateFavCount();
+}
+function updateFavCount(){
+  document.getElementById('favCount').textContent = `${favSelected.size}개 선택`;
+}
+function addSelectedFavs(){
+  if(favSelected.size===0){ alert('즐겨찾기를 하나 이상 선택해 주세요.'); return; }
+  favSelected.forEach(id=>{ try{ createPlayer(id); }catch(e){ console.warn('즐겨찾기 재생 실패:', e); } });
+  favSelected.clear();
+  closeFavModal();
+  requestSync();
+}
+function removeSelectedFavs(){
+  if(favSelected.size===0){ alert('삭제할 항목을 선택해 주세요.'); return; }
+  saveFavs(loadFavs().filter(e=>!favSelected.has(e.id)));
+  favSelected.clear();
+  renderFavGrid();
+  updateFavUI(getSelectedIdx());
+}
+/* 모달 배경 클릭 닫기 + 자동로드 옵션 저장 */
+document.getElementById('favModal').addEventListener('click', e=>{
+  if(e.target === document.getElementById('favModal')) closeFavModal();
+});
+document.getElementById('favAutoLoad').addEventListener('change', e=>{
+  try{ localStorage.setItem('vpFavAutoLoad', e.target.checked ? '1' : '0'); }catch(_){}
+});
+
 /* ===== 포커스 사용성: 키보드 단축키 ===== */
 function modalsOpen(){
   const intro = document.getElementById('introModal');
@@ -995,6 +1263,8 @@ function modalsOpen(){
   if(chg && chg.style.display === 'flex') return true;
   const smp = document.getElementById('sampleModal');
   if(smp && smp.style.display === 'flex') return true;
+  const fav = document.getElementById('favModal');
+  if(fav && fav.style.display === 'flex') return true;
   return false;
 }
 function focusNext(delta){
@@ -1005,7 +1275,7 @@ function focusNext(delta){
   selectCard(cards[next]);
 }
 document.addEventListener('keydown', e=>{
-  if(e.key==='Escape'){ closeChangeModal(); closeSampleModal(); return; }
+  if(e.key==='Escape'){ closeChangeModal(); closeSampleModal(); closeFavModal(); return; }
   if(modalsOpen()) return;
   const t = e.target;
   if(t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.isContentEditable)) return;
@@ -1020,6 +1290,7 @@ document.addEventListener('keydown', e=>{
     case 'ArrowLeft':  case 'ArrowUp':   e.preventDefault(); focusNext(-1); break;
     case ' ': e.preventDefault(); if(selIdx>=0) togglePlay(selIdx); break;
     case 'm': case 'M': if(selIdx>=0) toggleMute(selIdx); break;
+    case 'f': case 'F': if(selIdx>=0) toggleFocusedFav(); break;
     default:
       const n = parseInt(e.key, 10);
       if(!isNaN(n) && n>=1 && n<=cards.length){ e.preventDefault(); selectCard(cards[n-1]); }
