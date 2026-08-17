@@ -98,6 +98,38 @@
   .vol-pop.show{display:block}
   .vol-pop input[type=range]{width:160px}
 
+  /* ===== 시청 중 레이아웃 변경 / 전체보기 ===== */
+  .layout-pop-wrap{position:relative}
+  .layout-pop{
+    position:absolute; bottom:56px; right:0; background:#1e1e1e; border:1px solid #555;
+    padding:6px; border-radius:10px; display:none; flex-direction:column; gap:4px;
+  }
+  .layout-pop.show{display:flex}
+  .layout-pop button{
+    background:#2a2a2a; border:1px solid #444; color:#fff;
+    padding:6px 14px; border-radius:6px; cursor:pointer; text-align:left; font-size:13px;
+  }
+  .layout-pop button:hover{background:#383838}
+  .layout-pop button.active{ background:#0a84ff; border-color:#0a84ff; }
+
+  /* 전체보기: 선택 창만 화면 전체 */
+  #videoGrid.spotlight{
+    grid-template-columns:1fr !important;
+    grid-template-rows:1fr !important;
+    overflow:hidden !important;
+  }
+  #videoGrid.spotlight .focus-side{ display:none !important; }
+  #videoGrid.spotlight .focus-main{ grid-column:1; grid-row:1; }
+  #videoGrid.spotlight .video-card{ display:none; }
+  #videoGrid.spotlight .video-card.selected{
+    display:flex; grid-column:1; grid-row:1;
+    width:100%; height:100%;
+  }
+  #videoGrid.spotlight .video-card.selected .player-shell{
+    aspect-ratio:auto; height:auto; flex:1 1 auto; min-height:0;
+  }
+  #videoGrid.spotlight .focus-main .video-card{ display:flex; }
+
   /* ===== 하단 포커스 위젯 (모든 레이아웃 공통) ===== */
   #focusWidget{
     position:fixed; left:50%; transform:translateX(-50%);
@@ -332,8 +364,10 @@
     .btn{ padding:5px 8px; font-size:12px; border-radius:6px; }
     .vol-pop{ bottom:46px; padding:6px 8px; }
     .vol-pop input[type=range]{ width:120px; }
+    .layout-pop{ bottom:46px; }
     .card-meta{ font-size:11px; padding:3px 6px; }
     #focusWidget{ padding:6px 10px; gap:8px; }
+    #focusWidget .fw-controls{ flex-wrap:wrap; justify-content:flex-end; }
     #focusWidget #fwSeek{ width:64px; }
     .fw-title{ max-width:96px; font-size:12px; }
     /* 좁은 화면에서는 위젯 공간 확보를 위해 목록 버튼 숨김 (★ 토글은 유지) */
@@ -570,6 +604,15 @@
     <button id="fwFav" class="btn" title="즐겨찾기 추가 (F)" onclick="toggleFocusedFav()">☆</button>
     <button id="fwSearch" class="btn" title="유튜브 검색" onclick="openSearchModal()">🔍</button>
     <button id="fwFavOpen" class="btn" title="즐겨찾기 목록" onclick="openFavModal()">📑</button>
+    <div class="layout-pop-wrap">
+      <button id="fwLayout" class="btn" title="레이아웃 변경" onclick="toggleLayoutPop()">🧩</button>
+      <div id="fwLayoutPop" class="layout-pop">
+        <button data-l="eq2r" onclick="changeLayout('eq2r')">균등 (최대 3컬럼)</button>
+        <button data-l="focus" onclick="changeLayout('focus')">포커스 + 사이드</button>
+        <button data-l="2x2" onclick="changeLayout('2x2')">2 × 2</button>
+      </div>
+    </div>
+    <button id="fwFull" class="btn" title="전체보기 (선택 창)" onclick="toggleSpotlight()">⛶</button>
     <div class="vol-wrap">
       <button id="fwMute" class="btn" title="음소거 (M)" onclick="toggleFocusedMute()">🔇</button>
       <div id="fwVolPop" class="vol-pop">
@@ -964,6 +1007,7 @@ function updateWidget(){
   updateFwPlayUI(idx);
   updateFwAudioUI(idx);
   updateFavUI(idx);
+  syncLayoutPopActive();
 }
 function updateFwSeek(idx, dur, cur){
   const seek = document.getElementById('fwSeek');
@@ -993,6 +1037,29 @@ function toggleFocusedPlay(){ const idx = getSelectedIdx(); if(idx>=0) togglePla
 function toggleFocusedMute(){ const idx = getSelectedIdx(); if(idx>=0) toggleMute(idx); }
 function setFocusedVolume(v){ const idx = getSelectedIdx(); if(idx>=0) setVolume(idx, v); }
 function openFocusedChange(){ const idx = getSelectedIdx(); if(idx>=0) openChangeModal(idx); }
+
+/* ===== 시청 중 레이아웃 변경 / 전체보기 ===== */
+function toggleLayoutPop(){
+  syncLayoutPopActive();
+  document.getElementById('fwLayoutPop').classList.toggle('show');
+}
+function syncLayoutPopActive(){
+  document.querySelectorAll('#fwLayoutPop button').forEach(b=>b.classList.toggle('active', b.dataset.l===currentLayout));
+}
+function changeLayout(l){
+  if(spotlight) toggleSpotlight();
+  currentLayout = l;
+  applyLayout();
+  document.getElementById('fwLayoutPop').classList.remove('show');
+}
+let spotlight = false;
+function toggleSpotlight(){
+  spotlight = !spotlight;
+  document.getElementById('videoGrid').classList.toggle('spotlight', spotlight);
+  const btn = document.getElementById('fwFull');
+  if(btn){ btn.textContent = spotlight ? '✕' : '⛶'; btn.title = spotlight ? '전체보기 종료' : '전체보기 (선택 창)'; }
+  requestSync();
+}
 
 /* ===== 영상 변경 (창별) ===== */
 function openChangeModal(idx){
@@ -1528,7 +1595,7 @@ function focusNext(delta){
   selectCard(cards[next]);
 }
 document.addEventListener('keydown', e=>{
-  if(e.key==='Escape'){ closeChangeModal(); closeSampleModal(); closeFavModal(); closeSearchModal(); return; }
+  if(e.key==='Escape'){ closeChangeModal(); closeSampleModal(); closeFavModal(); closeSearchModal(); if(spotlight) toggleSpotlight(); return; }
   if(modalsOpen()) return;
   const t = e.target;
   if(t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.isContentEditable)) return;
@@ -1603,6 +1670,9 @@ try{ window.matchMedia("(orientation: portrait)").addEventListener('change', upd
 /* ===== 팝오버 닫기 ===== */
 document.addEventListener('click',(e)=>{
   document.querySelectorAll('.vol-pop').forEach(el=>{
+    if(!el.contains(e.target) && !el.previousElementSibling.contains(e.target)) el.classList.remove('show');
+  });
+  document.querySelectorAll('.layout-pop').forEach(el=>{
     if(!el.contains(e.target) && !el.previousElementSibling.contains(e.target)) el.classList.remove('show');
   });
 });
