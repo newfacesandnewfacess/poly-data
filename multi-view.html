@@ -424,7 +424,6 @@
     <div style="display:flex; gap:8px; margin:6px 0; flex-wrap:wrap;">
       <button class="btn" style="flex:1 1 auto;min-width:150px;padding:10px 14px;font-size:14px" onclick="openSearchModal()">🔍 검색으로 추가</button>
       <button class="btn" onclick="openSampleModal()">샘플에서 선택</button>
-      <button class="btn" onclick="loadTrendingKR(6)">한국 인기영상</button>
     </div>
 
     <div id="urlRow">
@@ -687,30 +686,8 @@ const DEFAULT_VIDEO_IDS = [
   "e-ORhEE9VVg",
   "kXYiU_JCYtU"
 ];
-function useSampleDefaults(count=6){
-  pending = DEFAULT_VIDEO_IDS.slice(0, count).map(id => `https://youtu.be/${id}`);
-  renderPending();
-}
-
-/* ==== (선택) 한국 인기영상: YouTube Data API 필요 ==== */
 const YT_API_KEY = ""; // 있으면 입력 (모든 사용자에게 적용)
-const SEARCH_PROXY_URL = ""; // Cloudflare Worker 프록시 URL (키 불필요, youtube-search-worker.js 참고)
-async function loadTrendingKR(max=6){
-  if(!getApiKey()){ useSampleDefaults(max); return; }
-  try{
-    const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet&chart=mostPopular&regionCode=KR&maxResults=${max}&key=${getApiKey()}`;
-    const res = await fetch(url);
-    if(!res.ok) throw new Error("YouTube API 요청 실패");
-    const data = await res.json();
-    const ids = (data.items||[]).map(it => it.id).filter(Boolean);
-    if(ids.length === 0) throw new Error("인기영상을 찾지 못함");
-    pending = ids.map(id => `https://youtu.be/${id}`);
-    renderPending();
-  }catch(err){
-    console.warn("[Trending Fallback]", err);
-    useSampleDefaults(max);
-  }
-}
+const SEARCH_PROXY_URL = "https://multi.honam-academy.workers.dev"; // Cloudflare Worker 프록시 (키 불필요, 모든 사용자에게 적용)
 
 /* 페이지 로드 시 비어있으면 샘플 채워 보여주기 */
 window.addEventListener('load', ()=>{
