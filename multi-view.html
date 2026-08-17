@@ -155,9 +155,18 @@
   }
   #urlRow{display:flex;gap:8px;align-items:center;margin:8px 0}
   #urlInput{flex:1;padding:8px;min-width:0}
-  table{width:100%;border-collapse:collapse;margin-top:12px}
-  th,td{border:1px solid #ccc;padding:6px;text-align:center}
-  td.url{max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* 추가된 영상 썸네일 스트립 */
+  #pendingStrip{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .p-card{position:relative;width:112px}
+  .p-card img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;display:block;background:#000}
+  .p-del{position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:0;background:rgba(0,0,0,.72);color:#fff;cursor:pointer;font-size:11px;line-height:1}
+  .p-del:hover{background:rgba(255,69,58,.9)}
+  .btn-start{
+    display:block;width:100%;margin-top:14px;
+    background:#0a84ff;border:0;color:#fff;
+    padding:12px 24px;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;
+  }
+  .btn-start:hover{background:#0a74e0}
 
   /* 레이아웃 픽커 */
   .layout-picker{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}
@@ -197,12 +206,12 @@
   #changeInput:focus{ outline:2px solid #0a84ff; border-color:transparent; }
   #changeInput.error{ outline:2px solid #ff453a; border-color:transparent; }
   /* 키보드가 열리면 모달을 위로 정렬 (iOS visualViewport 대응) */
-  #changeModal.kb-open{
+  #changeModal.kb-open, #searchModal.kb-open{
     align-items:flex-start;
     padding-top:10px;
     padding-bottom: calc(var(--kb, 0px) + 8px);
   }
-  #changeModal.kb-open #changeBox{
+  #changeModal.kb-open #changeBox, #searchModal.kb-open #searchBox{
     max-height: calc(100vh - var(--kb, 0px) - 60px);
   }
   .change-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
@@ -212,7 +221,7 @@
   }
 
   /* ===== 샘플 선택 모달 ===== */
-  #sampleModal, #favModal{
+  #sampleModal, #favModal, #searchModal{
     position:fixed; inset:0; z-index:12500;
     background:rgba(0,0,0,.78);
     display:none; justify-content:center; align-items:center;
@@ -221,16 +230,26 @@
              max(16px, env(safe-area-inset-bottom))
              max(16px, env(safe-area-inset-left));
   }
-  #sampleBox, #favBox{
+  #sampleBox, #favBox, #searchBox{
     background:#1c1c1e; color:#fff; padding:18px; border-radius:12px;
     width:min(760px, 96vw);
     border:1px solid #333;
     max-height: calc(100vh - 2*16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     overflow:auto;
   }
-  #sampleBox h3, #favBox h3{ margin:0 0 4px; font-size:16px; }
+  #sampleBox h3, #favBox h3, #searchBox h3{ margin:0 0 4px; font-size:16px; }
   .sample-hint{ margin:0 0 10px; font-size:13px; color:#bbb; }
-  #sampleGrid, #historyGrid, #favGrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:10px; }
+  #sampleGrid, #historyGrid, #favGrid, #searchGrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:10px; }
+  #searchRow{ display:flex; gap:8px; margin:8px 0; }
+  #searchInput{
+    flex:1; min-width:0; padding:10px; border-radius:8px;
+    border:1px solid #555; background:#111; color:#fff; font-size:14px;
+  }
+  #searchInput:focus{ outline:2px solid #0a84ff; border-color:transparent; }
+  #searchRow .btn-primary{
+    background:#0a84ff; border:0; color:#fff;
+    padding:8px 16px; border-radius:8px; cursor:pointer; font-size:14px;
+  }
   .sample-card{
     position:relative; background:#111; border:2px solid #333;
     border-radius:10px; overflow:hidden; cursor:pointer; user-select:none;
@@ -317,6 +336,8 @@
     #focusWidget{ padding:6px 10px; gap:8px; }
     #focusWidget #fwSeek{ width:64px; }
     .fw-title{ max-width:96px; font-size:12px; }
+    /* 좁은 화면에서는 위젯 공간 확보를 위해 목록 버튼 숨김 (★ 토글은 유지) */
+    #fwFavOpen{ display:none; }
   }
 
   /* ===== 세로모드 안내 게이트(좁은 폰에서만, 무시 가능) ===== */
@@ -363,21 +384,19 @@
 <!-- 인트로 모달 -->
 <div id="introModal">
   <div id="introBox">
-    <h2>유튜브 주소 입력 & 레이아웃 선택</h2>
+    <h2>멀티 유튜브 플레이어</h2>
+    <p style="margin:4px 0 10px;color:#555;font-size:13px">검색·샘플·주소로 영상을 추가하고 레이아웃을 고르세요.</p>
+
+    <div style="display:flex; gap:8px; margin:6px 0; flex-wrap:wrap;">
+      <button class="btn" style="flex:1 1 auto;min-width:150px;padding:10px 14px;font-size:14px" onclick="openSearchModal()">🔍 검색으로 추가</button>
+      <button class="btn" onclick="openSampleModal()">샘플에서 선택</button>
+      <button class="btn" onclick="loadTrendingKR(6)">한국 인기영상</button>
+    </div>
 
     <div id="urlRow">
-      <input id="urlInput" type="text" placeholder="유튜브 주소(https://youtu.be/... 또는 ?v=...)" />
+      <input id="urlInput" type="text" placeholder="유튜브 주소 직접 입력 (선택)" />
       <button class="btn" onclick="addUrl()">+ 추가</button>
-      <button class="btn" onclick="startApp()">시작</button>
     </div>
-    <div style="display:flex; gap:8px; margin:6px 0; flex-wrap:wrap;">
-      <button class="btn" onclick="openSampleModal()">샘플에서 선택</button>
-      <button class="btn" onclick="loadTrendingKR(6)">한국 인기영상 불러오기(베타)</button>
-    </div>
-    <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:2px 0 10px;cursor:pointer">
-      <input id="favAutoLoad" type="checkbox"/> 시작 시 즐겨찾기 자동 불러오기
-      <span style="color:#666;font-size:12px">(즐겨찾기가 있으면 샘플 대신 로드)</span>
-    </label>
 
     <div class="layout-picker">
       <div class="layout-card active" data-layout="eq2r" onclick="pickLayout(this)">
@@ -419,10 +438,13 @@
       </div>
     </div>
 
-    <table id="urlTable">
-      <thead><tr><th style="width:60px">순번</th><th style="width:100px">썸네일</th><th>주소</th><th style="width:80px">삭제</th></tr></thead>
-      <tbody></tbody>
-    </table>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:10px 0 4px;cursor:pointer">
+      <input id="favAutoLoad" type="checkbox"/> 시작 시 즐겨찾기 자동 불러오기
+      <span style="color:#666;font-size:12px">(즐겨찾기가 있으면 자동 로드)</span>
+    </label>
+
+    <div id="pendingStrip"></div>
+    <button id="startBtn" class="btn-start" onclick="startApp()">시작</button>
   </div>
 </div>
 
@@ -450,6 +472,50 @@
       <span style="flex:1"></span>
       <button class="btn" onclick="closeSampleModal()">닫기</button>
       <button class="btn-primary" onclick="addSelectedSamples()">선택 추가</button>
+    </div>
+  </div>
+</div>
+
+<!-- 검색 모달 -->
+<div id="searchModal">
+  <div id="searchBox">
+    <h3>유튜브 검색</h3>
+    <p class="sample-hint">검색어로 영상을 찾아 바로 추가할 수 있습니다.</p>
+    <div id="searchRow">
+      <input id="searchInput" type="text" placeholder="검색어 입력 (예: 음악, 요리, 강아지…)"
+             onkeydown="if(event.key==='Enter'){ event.preventDefault(); runSearch(); }" />
+      <button class="btn-primary" onclick="runSearch()">검색</button>
+    </div>
+    <div id="searchStatus" class="sample-hint"></div>
+    <div id="searchGrid"></div>
+    <div class="sample-actions">
+      <button class="btn" onclick="toggleSelectAllSearch()">전체 선택/해제</button>
+      <span id="searchCount" class="sample-count">0개 선택</span>
+      <span style="flex:1"></span>
+      <button class="btn" onclick="closeSearchModal()">닫기</button>
+      <button class="btn-primary" onclick="addSelectedSearch()">선택 추가</button>
+    </div>
+    <!-- API 키 설정 (키가 없을 때 표시) -->
+    <div id="searchKeyBox" style="display:none;margin-top:14px;border-top:1px solid #333;padding-top:12px">
+      <div style="font-size:13px;margin-bottom:6px">
+        🔑 <b>무료 API 키로 더 정확한 검색</b>
+        <span style="color:#bbb">— 키 없이는 공개 폴백 검색을 시도합니다</span>
+      </div>
+      <div id="searchKeyRow" style="display:flex;gap:8px">
+        <input id="searchKeyInput" type="text" placeholder="① YouTube Data API v3 키 (선택)"
+               style="flex:1;min-width:0;padding:8px;border-radius:8px;border:1px solid #555;background:#111;color:#fff;font-size:13px"/>
+        <button class="btn" onclick="saveSearchKey()">저장</button>
+      </div>
+      <div id="searchProxyRow" style="display:flex;gap:8px;margin-top:6px">
+        <input id="searchProxyInput" type="text" placeholder="② 무료 프록시 URL (선택, youtube-search-worker.js)"
+               style="flex:1;min-width:0;padding:8px;border-radius:8px;border:1px solid #555;background:#111;color:#fff;font-size:13px"/>
+        <button class="btn" onclick="saveSearchProxy()">저장</button>
+      </div>
+      <div style="font-size:12px;color:#9a9a9a;margin-top:8px;line-height:1.6">
+        <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener" style="color:#0a84ff">① API 키</a>: 공식·가장 안정적, 하루 약 100회 무료<br/>
+        ② <b style="color:#ccc">프록시 URL</b>: Cloudflare Worker 직접 배포 (키 불필요, <code style="color:#0a84ff">youtube-search-worker.js</code> 참고)<br/>
+        둘 다 없으면 공개 폴백 검색을 시도하며, 설정값은 이 기기에만 저장됩니다.
+      </div>
     </div>
   </div>
 </div>
@@ -502,6 +568,7 @@
     <button id="fwPlay" class="btn" title="재생/일시정지 (Space)" onclick="toggleFocusedPlay()">▶</button>
     <button id="fwChange" class="btn" title="영상 변경 (현재 창)" onclick="openFocusedChange()">🔁</button>
     <button id="fwFav" class="btn" title="즐겨찾기 추가 (F)" onclick="toggleFocusedFav()">☆</button>
+    <button id="fwSearch" class="btn" title="유튜브 검색" onclick="openSearchModal()">🔍</button>
     <button id="fwFavOpen" class="btn" title="즐겨찾기 목록" onclick="openFavModal()">📑</button>
     <div class="vol-wrap">
       <button id="fwMute" class="btn" title="음소거 (M)" onclick="toggleFocusedMute()">🔇</button>
@@ -552,17 +619,20 @@ function addUrl(){
 }
 function removePending(i){ pending.splice(i,1); renderPending(); }
 function renderPending(){
-  const tbody = document.querySelector('#urlTable tbody'); tbody.innerHTML='';
+  const strip = document.getElementById('pendingStrip');
+  if(!strip) return;
+  strip.innerHTML='';
   pending.forEach((url,i)=>{
     const id = extractVideoID(url);
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${i+1}</td>
-      <td><img src="https://img.youtube.com/vi/${id}/hqdefault.jpg" width="80" height="45" style="object-fit:cover;border-radius:6px"/></td>
-      <td class="url" title="${url}">${url}</td>
-      <td><button class="btn" onclick="removePending(${i})">삭제</button></td>`;
-    tbody.appendChild(tr);
+    const card = document.createElement('div');
+    card.className='p-card';
+    card.innerHTML = `
+      <img src="https://img.youtube.com/vi/${id}/hqdefault.jpg" alt="" loading="lazy"/>
+      <button class="p-del" title="삭제" onclick="removePending(${i})">✕</button>`;
+    strip.appendChild(card);
   });
+  const startBtn = document.getElementById('startBtn');
+  if(startBtn) startBtn.textContent = pending.length ? `시작 (${pending.length}개)` : '시작';
 }
 
 /* ==== 기본 샘플 영상 ==== */
@@ -580,11 +650,12 @@ function useSampleDefaults(count=6){
 }
 
 /* ==== (선택) 한국 인기영상: YouTube Data API 필요 ==== */
-const YT_API_KEY = ""; // 있으면 입력
+const YT_API_KEY = ""; // 있으면 입력 (모든 사용자에게 적용)
+const SEARCH_PROXY_URL = ""; // Cloudflare Worker 프록시 URL (키 불필요, youtube-search-worker.js 참고)
 async function loadTrendingKR(max=6){
-  if(!YT_API_KEY){ useSampleDefaults(max); return; }
+  if(!getApiKey()){ useSampleDefaults(max); return; }
   try{
-    const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet&chart=mostPopular&regionCode=KR&maxResults=${max}&key=${YT_API_KEY}`;
+    const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet&chart=mostPopular&regionCode=KR&maxResults=${max}&key=${getApiKey()}`;
     const res = await fetch(url);
     if(!res.ok) throw new Error("YouTube API 요청 실패");
     const data = await res.json();
@@ -600,8 +671,8 @@ async function loadTrendingKR(max=6){
 
 /* 페이지 로드 시 비어있으면 샘플 채워 보여주기 */
 window.addEventListener('load', ()=>{
-  if(pending.length===0) useSampleDefaults(6);
   try{ document.getElementById('favAutoLoad').checked = localStorage.getItem('vpFavAutoLoad')==='1'; }catch(_){}
+  renderPending();
   updateWidget(); // 위젯 표시 상태 초기화(시작 전엔 숨김)
 });
 
@@ -618,7 +689,8 @@ function startApp(){
       .filter(id=>/^[a-zA-Z0-9_-]{11}$/.test(id))
       .map(id=>`https://youtu.be/${id}`);
   }
-  if(pending.length===0){ useSampleDefaults(6); }
+  if(pending.length===0){ alert('영상을 하나 이상 추가해 주세요. (검색 또는 샘플)'); return; }
+  renderPending();
 
   pending.forEach(url=>{
     const id = extractVideoID(url);
@@ -967,21 +1039,23 @@ document.getElementById('changeModal').addEventListener('click', e=>{
 });
 
 /* 모바일 키보드가 모달을 가리지 않게 visualViewport 대응 */
-function adjustChangeModalForKeyboard(){
-  const modal = document.getElementById('changeModal');
-  if(!modal || modal.style.display !== 'flex') return;
+function adjustModalsForKeyboard(){
   const vv = window.visualViewport;
   if(!vv) return;
   const kb = Math.max(0, window.innerHeight - vv.height);
-  modal.classList.toggle('kb-open', kb > 100);
-  if(kb > 100) modal.style.setProperty('--kb', kb + 'px');
-  else modal.style.removeProperty('--kb');
+  ['changeModal','searchModal'].forEach(id=>{
+    const modal = document.getElementById(id);
+    if(!modal || modal.style.display !== 'flex') return;
+    modal.classList.toggle('kb-open', kb > 100);
+    if(kb > 100) modal.style.setProperty('--kb', kb + 'px');
+    else modal.style.removeProperty('--kb');
+  });
   const inp = document.getElementById('changeInput');
   if(kb > 100 && inp && inp.scrollIntoView){ try{ inp.scrollIntoView({block:'nearest'}); }catch(_){} }
 }
 if(window.visualViewport){
-  window.visualViewport.addEventListener('resize', adjustChangeModalForKeyboard);
-  window.visualViewport.addEventListener('scroll', adjustChangeModalForKeyboard);
+  window.visualViewport.addEventListener('resize', adjustModalsForKeyboard);
+  window.visualViewport.addEventListener('scroll', adjustModalsForKeyboard);
 }
 
 /* ===== 샘플 선택 모달 ===== */
@@ -1137,6 +1211,183 @@ function clearHistory(){
   updateSampleCount();
 }
 
+/* ===== 유튜브 검색 (검색어로 영상 추가) ===== */
+const SEARCH_KEY_STORAGE = 'vpYtApiKey';
+function getApiKey(){
+  try{ return (localStorage.getItem(SEARCH_KEY_STORAGE)||'').trim() || YT_API_KEY; }catch(_){ return YT_API_KEY; }
+}
+const SEARCH_PROXY_STORAGE = 'vpSearchProxy';
+function getSearchProxy(){
+  try{ return (localStorage.getItem(SEARCH_PROXY_STORAGE)||'').trim() || SEARCH_PROXY_URL; }catch(_){ return SEARCH_PROXY_URL; }
+}
+function saveSearchProxy(){
+  const v = document.getElementById('searchProxyInput').value.trim();
+  try{ localStorage.setItem(SEARCH_PROXY_STORAGE, v); }catch(_){}
+  updateSearchKeyUI();
+  if(document.getElementById('searchInput').value.trim()) runSearch();
+  else alert(v ? '프록시 URL이 저장되었습니다. 이 기기에만 보관됩니다.' : '프록시 URL 설정을 해제했습니다.');
+}
+function saveSearchKey(){
+  const v = document.getElementById('searchKeyInput').value.trim();
+  try{ localStorage.setItem(SEARCH_KEY_STORAGE, v); }catch(_){}
+  updateSearchKeyUI();
+  if(document.getElementById('searchInput').value.trim()){
+    runSearch(); // 키 저장 즉시 기존 검색어로 재검색
+  }else{
+    alert(v ? 'API 키가 저장되었습니다. 이 기기에만 보관됩니다.' : 'API 키 설정을 해제했습니다.');
+  }
+}
+function updateSearchKeyUI(){
+  const box = document.getElementById('searchKeyBox');
+  if(!box) return;
+  box.style.display = (getApiKey() || getSearchProxy()) ? 'none' : '';
+}
+async function searchYouTube(query){
+  const key = getApiKey();
+  if(key){
+    try{
+      const res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=20&q=${encodeURIComponent(query)}&key=${encodeURIComponent(key)}`);
+      if(res.ok){
+        const data = await res.json();
+        const items = (data.items||[]).map(it=>({ id: it.id.videoId, title: it.snippet.title, author: it.snippet.channelTitle })).filter(x=>x.id);
+        if(items.length) return items;
+      }
+    }catch(e){ console.warn('Data API 검색 실패 → 폴백:', e); }
+  }
+  // 키 없이: Cloudflare Worker 프록시 (서버에서 youtubei 호출 → CORS 문제 없음)
+  const proxy = getSearchProxy();
+  if(proxy){
+    try{
+      const res = await fetch(proxy, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ query }) });
+      if(res.ok){
+        const data = await res.json();
+        if(data && Array.isArray(data.items) && data.items.length) return data.items;
+      }
+    }catch(e){ console.warn('프록시 검색 실패:', e); }
+  }
+  // 키 없이 시도: 공개 Invidious/Piped 인스턴스 순차 시도 (실패 시 그대로 실패 처리)
+  const q = encodeURIComponent(query);
+  const candidates = [
+    `https://pipedapi.kavin.rocks/search?q=${q}&filter=videos`,
+    `https://pipedapi.adminforge.de/search?q=${q}&filter=videos`,
+    `https://inv.nadeko.net/api/v1/search?q=${q}&type=video`,
+    `https://invidious.nerdvpn.de/api/v1/search?q=${q}&type=video`
+  ];
+  let lastErr = null;
+  for(const url of candidates){
+    try{
+      const res = await fetch(url);
+      if(!res.ok) continue;
+      const data = await res.json();
+      const items = [];
+      if(Array.isArray(data)){
+        data.forEach(it=>{
+          const vid = it.videoId || (typeof it.url==='string' && it.url.includes('v=') ? it.url.split('v=')[1].split('&')[0] : '');
+          if(vid && /^[a-zA-Z0-9_-]{11}$/.test(vid)){
+            items.push({ id: vid, title: it.title || '', author: it.uploaderName || it.author || '' });
+          }
+        });
+      }
+      if(items.length) return items.slice(0, 20);
+    }catch(e){ lastErr = e; }
+  }
+  throw lastErr || new Error('폴백 검색 실패');
+}
+
+/* 검색 모달 */
+let searchSelected = new Set();
+function openSearchModal(){
+  searchSelected.clear();
+  const grid = document.getElementById('searchGrid');
+  if(grid) grid.innerHTML='';
+  document.getElementById('searchStatus').textContent='';
+  try{ document.getElementById('searchKeyInput').value = localStorage.getItem(SEARCH_KEY_STORAGE)||''; }catch(_){}
+  try{ document.getElementById('searchProxyInput').value = localStorage.getItem(SEARCH_PROXY_STORAGE)||''; }catch(_){}
+  updateSearchKeyUI();
+  document.getElementById('searchModal').style.display='flex';
+  setTimeout(()=>document.getElementById('searchInput').focus(), 60);
+}
+function closeSearchModal(){
+  document.getElementById('searchModal').style.display='none';
+  searchSelected.clear();
+}
+async function runSearch(){
+  const input = document.getElementById('searchInput');
+  const q = input.value.trim();
+  if(!q){ alert('검색어를 입력해 주세요.'); input.focus(); return; }
+  const status = document.getElementById('searchStatus');
+  searchSelected.clear(); updateSearchCount();
+  status.textContent = getApiKey() ? '검색 중…' : '검색 중… (키 없이 폴백 검색 시도)';
+  let results = [];
+  try{ results = await searchYouTube(q); }catch(err){ console.warn('검색 실패:', err); }
+  if(!results || !results.length){
+    status.textContent = '검색 결과를 가져오지 못했습니다. 아래에서 무료 API 키를 설정해 보세요.';
+    updateSearchKeyUI();
+    return;
+  }
+  status.textContent = `「${q}」 결과 ${results.length}개`;
+  renderSearchGrid(results);
+  updateSearchKeyUI();
+}
+function renderSearchGrid(results){
+  const grid = document.getElementById('searchGrid');
+  grid.innerHTML='';
+  results.forEach(r=>{
+    const card = document.createElement('div');
+    card.className='sample-card';
+    card.dataset.id = r.id;
+    card.innerHTML = `
+      <img src="https://img.youtube.com/vi/${r.id}/hqdefault.jpg" alt="" loading="lazy"/>
+      <div class="sample-check">✓</div>
+      <div class="sample-info">
+        <div class="sample-title">${escapeHtml(r.title || r.id)}</div>
+        <div class="sample-author">${r.author ? escapeHtml(r.author) : ''}</div>
+      </div>`;
+    card.onclick = ()=>toggleSearchCard(card);
+    grid.appendChild(card);
+  });
+  updateSearchCount();
+}
+function toggleSearchCard(card){
+  card.classList.toggle('sel');
+  if(card.classList.contains('sel')) searchSelected.add(card.dataset.id);
+  else searchSelected.delete(card.dataset.id);
+  updateSearchCount();
+}
+function toggleSelectAllSearch(){
+  const cards = [...document.querySelectorAll('#searchGrid .sample-card')];
+  const all = cards.length>0 && cards.every(c=>c.classList.contains('sel'));
+  cards.forEach(c=>{
+    c.classList.toggle('sel', !all);
+    if(!all) searchSelected.add(c.dataset.id); else searchSelected.delete(c.dataset.id);
+  });
+  updateSearchCount();
+}
+function updateSearchCount(){
+  document.getElementById('searchCount').textContent = `${searchSelected.size}개 선택`;
+}
+function addSelectedSearch(){
+  if(searchSelected.size===0){ alert('검색 결과를 하나 이상 선택해 주세요.'); return; }
+  if(players.length > 0){
+    // 앱 실행 중: 새 창으로 즉시 추가
+    searchSelected.forEach(id=>{ try{ createPlayer(id); }catch(e){ console.warn('검색 추가 실패:', e); } });
+  }else{
+    // 시작 전: 대기 목록에 추가
+    searchSelected.forEach(id=>{
+      const url = `https://youtu.be/${id}`;
+      if(!pending.some(u=>extractVideoID(u)===id)) pending.push(url);
+    });
+    renderPending();
+  }
+  searchSelected.clear();
+  closeSearchModal();
+  requestSync();
+}
+/* 모달 배경 클릭 닫기 */
+document.getElementById('searchModal').addEventListener('click', e=>{
+  if(e.target === document.getElementById('searchModal')) closeSearchModal();
+});
+
 /* ===== 즐겨찾기 (위젯 ★ + 전용 모달) ===== */
 const FAV_KEY = 'vpFavorites';
 const FAV_MAX = 100;
@@ -1265,6 +1516,8 @@ function modalsOpen(){
   if(smp && smp.style.display === 'flex') return true;
   const fav = document.getElementById('favModal');
   if(fav && fav.style.display === 'flex') return true;
+  const sch = document.getElementById('searchModal');
+  if(sch && sch.style.display === 'flex') return true;
   return false;
 }
 function focusNext(delta){
@@ -1275,7 +1528,7 @@ function focusNext(delta){
   selectCard(cards[next]);
 }
 document.addEventListener('keydown', e=>{
-  if(e.key==='Escape'){ closeChangeModal(); closeSampleModal(); closeFavModal(); return; }
+  if(e.key==='Escape'){ closeChangeModal(); closeSampleModal(); closeFavModal(); closeSearchModal(); return; }
   if(modalsOpen()) return;
   const t = e.target;
   if(t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.isContentEditable)) return;
